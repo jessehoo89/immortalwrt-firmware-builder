@@ -178,6 +178,10 @@ jobs:
           echo "- Repository: ${{ env.DOCKER_REPO }}" >> build-info.txt
           echo "- Tags: ${{ env.DOCKER_TAG }}, ${{ env.BUILD_DATE }}" >> build-info.txt
           echo "- Pull: docker pull ${{ env.DOCKER_REPO }}:${{ env.DOCKER_TAG }}" >> build-info.txt
+          echo "" >> build-info.txt
+          echo "📦 Docker 仓库同步：" >> build-info.txt
+          echo "immortalwrt-x86-64-generic-rootfs.tar.gz 已同步推送至 Docker 仓库 jessekool/immortalwrt_multiple_ethports" >> build-info.txt
+          echo "地址：https://hub.docker.com/r/jessekool/immortalwrt_multiple_ethports" >> build-info.txt
       
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
