@@ -106,6 +106,34 @@ case $BOOT_CHOICE in
 esac
 log_info "启动模式: $BOOT_MODE"
 
+# 虚拟机镜像格式选择
+echo ""
+echo "请选择虚拟机镜像格式:"
+echo "  1) img.gz (RAW 格式压缩，仅物理机刷写)"
+echo "  2) qcow2.gz (QEMU/KVM)"
+echo "  3) vmdk.gz (VMware)"
+echo "  4) vdi.gz (VirtualBox)"
+echo "  5) vhdx.gz (Hyper-V)"
+echo "  6) 全部格式"
+read -p "请输入选项 (1-6，默认 6): " VM_CHOICE
+VM_CHOICE=${VM_CHOICE:-6}
+
+case $VM_CHOICE in
+    1) VM_FORMAT="img" ;;
+    2) VM_FORMAT="qcow2" ;;
+    3) VM_FORMAT="vmdk" ;;
+    4) VM_FORMAT="vdi" ;;
+    5) VM_FORMAT="vhdx" ;;
+    6) VM_FORMAT="all" ;;
+    *) VM_FORMAT="all" ;;
+esac
+
+if [ "$VM_FORMAT" = "all" ]; then
+    log_info "虚拟机镜像格式: 全部 (img, qcow2, vmdk, vdi, vhdx)"
+else
+    log_info "虚拟机镜像格式: $VM_FORMAT"
+fi
+
 echo ""
 
 # === 步骤 2: 获取版本信息 ===
@@ -218,9 +246,48 @@ rm -f mihomo-*.gz
 # === 步骤 7: 构建固件 ===
 log_step "7. 构建固件..."
 
+# 检查并安装 qemu-img (用于转换虚拟机格式)
+if ! command -v qemu-img &> /dev/null; then
+    log_info "安装 qemu-img 用于虚拟机格式转换..."
+    sudo apt-get install -y qemu-utils 2>/dev/null || sudo apt-get install -y qemu-img 2>/dev/null || true
+fi
+
 PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 
 rm -rf output bin/targets && mkdir -p output
+
+# 转换虚拟机格式
+convert_image() {
+    local input_file=$1
+    local format=$2
+    local output_file=$3
+    
+    if [ ! -f "$input_file" ]; then
+        log_warn "源文件不存在: $input_file"
+        return 1
+    fi
+    
+    # 先解压
+    local raw_file="${input_file%.gz}"
+    if [[ "$input_file" == *.gz ]]; then
+        log_info "解压 $input_file..."
+        gunzip -c "$input_file" > "$raw_file"
+    else
+        cp "$input_file" "$raw_file"
+    fi
+    
+    # 转换为目标格式
+    log_info "转换为 $format 格式: $output_file"
+    qemu-img convert -f raw -O "$format" "$raw_file" "$output_file"
+    
+    # 压缩
+    gzip -f "$output_file"
+    
+    # 清理临时文件
+    rm -f "$raw_file"
+    
+    log_info "完成: ${output_file}.gz"
+}
 
 # 根据选择构建不同类型
 build_firmware() {
@@ -235,7 +302,29 @@ build_firmware() {
     fi
 
     log_info "构建固件: ${type} + ${boot}..."
-    make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" $extra_vars 2>&1 | tee build-${type}-${boot}.log
+    make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" $extra_vars 2>&1 | tee build-${type}-${boot}.log
+    
+    # 转换虚拟机格式
+    if [ "$VM_FORMAT" != "img" ]; then
+        for img in output/*-${type}-${boot}.img; do
+            if [ -f "$img" ]; then
+                local basename=$(basename "$img" .img)
+                
+                if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "qcow2" ]; then
+                    convert_image "$img" "qcow2" "output/${basename}.qcow2"
+                fi
+                if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vmdk" ]; then
+                    convert_image "$img" "vmdk" "output/${basename}.vmdk"
+                fi
+                if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vdi" ]; then
+                    convert_image "$img" "vdi" "output/${basename}.vdi"
+                fi
+                if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vhdx" ]; then
+                    convert_image "$img" "vhdx" "output/${basename}.vhdx"
+                fi
+            fi
+        done
+    fi
 }
 
 if [ "$FIRMWARE_TYPE" = "both" ]; then
