@@ -12,7 +12,7 @@ on:
 
 env:
   MIRROR: "https://downloads.immortalwrt.org"
-  DOCKER_REPO: "jessehoo89/immortalwrt-x86-64"
+  DOCKER_REPO: "${{ secrets.DOCKER_HUB_USERNAME }}/immortalwrt_multiple_ethports"
   DOCKER_TAG: "latest"
   BUILD_DATE: "${{ github.run_number }}"
 
