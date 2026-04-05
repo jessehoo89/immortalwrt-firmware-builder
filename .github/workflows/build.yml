@@ -120,13 +120,26 @@ jobs:
       - name: Download third-party packages
         run: |
           cd ${{ env.IMAGEBUILDER_DIR }}/packages
-          wget -q "${{ env.GHPROXY }}/https://github.com/EasyTier/luci-app-easytier/releases/download/${{ steps.version.outputs.EASYTIER_TAG }}/EasyTier-${{ steps.version.outputs.EASYTIER_TAG }}-x86_64-22.03.7.zip"
+          
+          # 构建 GitHub 下载 URL（根据是否使用代理）
+          if [ -n "${{ env.GHPROXY }}" ]; then
+            GHPREFIX="${{ env.GHPROXY }}/"
+          else
+            GHPREFIX=""
+          fi
+          
+          # EasyTier
+          wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${{ steps.version.outputs.EASYTIER_TAG }}/EasyTier-${{ steps.version.outputs.EASYTIER_TAG }}-x86_64-22.03.7.zip"
           unzip -q EasyTier-*.zip && rm -f EasyTier-*.zip
-          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-app-lucky_2.2.2-r1_all.ipk"
-          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-i18n-lucky-zh-cn_25.051.13443.e78d498_all.ipk"
-          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/lucky_2.19.5_Openwrt_x86_64.ipk"
-          wget -q "${{ env.GHPROXY }}/https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-app-adguardhome_1.19_all.ipk"
-          wget -q "${{ env.GHPROXY }}/https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
+          
+          # Lucky
+          wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-app-lucky_2.2.2-r1_all.ipk"
+          wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-i18n-lucky-zh-cn_25.051.13443.e78d498_all.ipk"
+          wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/lucky_2.19.5_Openwrt_x86_64.ipk"
+          
+          # AdGuardHome LuCI
+          wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-app-adguardhome_1.19_all.ipk"
+          wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
       
       - name: Prepare FILES directory
         run: |
@@ -141,13 +154,15 @@ jobs:
           echo "src/gz immortalwrt_routing ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/routing" >> FILES/etc/opkg/distfeeds.conf
           echo "src/gz immortalwrt_telephony ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/telephony" >> FILES/etc/opkg/distfeeds.conf
           
-          wget -q "${{ env.GHPROXY }}/https://github.com/AdguardTeam/AdGuardHome/releases/download/${{ steps.version.outputs.ADG_CORE_TAG }}/AdGuardHome_linux_amd64.tar.gz"
+          # AdGuardHome core
+          wget -q "${GHPREFIX}https://github.com/AdguardTeam/AdGuardHome/releases/download/${{ steps.version.outputs.ADG_CORE_TAG }}/AdGuardHome_linux_amd64.tar.gz"
           tar -xzf AdGuardHome_linux_amd64.tar.gz
           mv AdGuardHome/AdGuardHome FILES/usr/bin/AdGuardHome/
           chmod +x FILES/usr/bin/AdGuardHome/AdGuardHome
           rm -rf AdGuardHome AdGuardHome_linux_amd64.tar.gz
           
-          wget -q "${{ env.GHPROXY }}/https://github.com/MetaCubeX/mihomo/releases/download/${{ steps.version.outputs.MIHOMO_TAG }}/mihomo-linux-amd64-${{ steps.version.outputs.MIHOMO_TAG }}.gz"
+          # Mihomo core
+          wget -q "${GHPREFIX}https://github.com/MetaCubeX/mihomo/releases/download/${{ steps.version.outputs.MIHOMO_TAG }}/mihomo-linux-amd64-${{ steps.version.outputs.MIHOMO_TAG }}.gz"
           gunzip -c mihomo-*.gz > FILES/etc/openclash/core/clash_meta
           chmod +x FILES/etc/openclash/core/clash_meta
           rm -f mihomo-*.gz
