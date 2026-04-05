@@ -1,6 +1,6 @@
 #!/bin/bash
 # ImmortalWrt 本地构建脚本
-# 支持交互式选择构建类型、启动模式和代理
+# 支持交互式选择镜像源和代理
 
 set -e
 
@@ -70,68 +70,6 @@ if [ -n "$GHPROXY" ]; then
     GHPREFIX="${GHPROXY}/"
 else
     GHPREFIX=""
-fi
-
-# 构建类型选择
-echo ""
-echo "请选择固件类型:"
-echo "  1) squashfs (只读根文件系统，更安全，推荐)"
-echo "  2) ext4 (可写根文件系统，更灵活)"
-echo "  3) 两者都构建"
-read -p "请输入选项 (1-3，默认 1): " TYPE_CHOICE
-TYPE_CHOICE=${TYPE_CHOICE:-1}
-
-case $TYPE_CHOICE in
-    1) FIRMWARE_TYPE="squashfs" ;;
-    2) FIRMWARE_TYPE="ext4" ;;
-    3) FIRMWARE_TYPE="both" ;;
-    *) FIRMWARE_TYPE="squashfs" ;;
-esac
-log_info "固件类型: $FIRMWARE_TYPE"
-
-# 启动模式选择
-echo ""
-echo "请选择启动模式:"
-echo "  1) combined (传统 BIOS)"
-echo "  2) combined-efi (UEFI)"
-echo "  3) 两者都构建"
-read -p "请输入选项 (1-3，默认 3): " BOOT_CHOICE
-BOOT_CHOICE=${BOOT_CHOICE:-3}
-
-case $BOOT_CHOICE in
-    1) BOOT_MODE="combined" ;;
-    2) BOOT_MODE="combined-efi" ;;
-    3) BOOT_MODE="both" ;;
-    *) BOOT_MODE="both" ;;
-esac
-log_info "启动模式: $BOOT_MODE"
-
-# 虚拟机镜像格式选择
-echo ""
-echo "请选择虚拟机镜像格式:"
-echo "  1) img.gz (RAW 格式压缩，仅物理机刷写)"
-echo "  2) qcow2.gz (QEMU/KVM)"
-echo "  3) vmdk.gz (VMware)"
-echo "  4) vdi.gz (VirtualBox)"
-echo "  5) vhdx.gz (Hyper-V)"
-echo "  6) 全部格式"
-read -p "请输入选项 (1-6，默认 6): " VM_CHOICE
-VM_CHOICE=${VM_CHOICE:-6}
-
-case $VM_CHOICE in
-    1) VM_FORMAT="img" ;;
-    2) VM_FORMAT="qcow2" ;;
-    3) VM_FORMAT="vmdk" ;;
-    4) VM_FORMAT="vdi" ;;
-    5) VM_FORMAT="vhdx" ;;
-    6) VM_FORMAT="all" ;;
-    *) VM_FORMAT="all" ;;
-esac
-
-if [ "$VM_FORMAT" = "all" ]; then
-    log_info "虚拟机镜像格式: 全部 (img, qcow2, vmdk, vdi, vhdx)"
-else
-    log_info "虚拟机镜像格式: $VM_FORMAT"
 fi
 
 echo ""
@@ -246,69 +184,15 @@ rm -f mihomo-*.gz
 # === 步骤 7: 构建固件 ===
 log_step "7. 构建固件..."
 
-# 检查并安装 qemu-img (用于转换虚拟机格式)
-if ! command -v qemu-img &> /dev/null; then
-    log_info "安装 qemu-img 用于虚拟机格式转换..."
-    sudo apt-get update && sudo apt-get install -y qemu-utils 2>/dev/null || true
-fi
-
 PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 
 rm -rf output bin/targets && mkdir -p output
 
-# ImageBuilder 一次运行会生成所有格式：squashfs/ext4 + combined/combined-efi
-log_info "开始构建固件 (一次构建所有基础格式)..."
+# ImageBuilder 一次运行生成所有格式
+log_info "开始构建固件 (squashfs/ext4 + combined/combined-efi + img/qcow2/vmdk/vdi/vhdx)..."
 make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log
 
-# 复制基础固件
 [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
-
-# 转换虚拟机格式
-if [ "$VM_FORMAT" != "img" ] && command -v qemu-img &> /dev/null; then
-    log_step "转换虚拟机格式..."
-    
-    convert_vm_image() {
-        local input_file=$1
-        local format=$2
-        local output_file=$3
-        
-        if [ ! -f "$input_file" ]; then
-            return 1
-        fi
-        
-        # 解压
-        local raw_file="${input_file%.gz}"
-        if [[ "$input_file" == *.gz ]]; then
-            gunzip -c "$input_file" > "$raw_file"
-        else
-            cp "$input_file" "$raw_file"
-        fi
-        
-        # 转换
-        qemu-img convert -f raw -O "$format" "$raw_file" "$output_file"
-        gzip -f "$output_file"
-        rm -f "$raw_file"
-    }
-    
-    # 遍历所有 img 文件并转换
-    for img in output/*.img; do
-        [ -f "$img" ] || continue
-        basename=$(basename "$img" .img)
-        
-        if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "qcow2" ]; then
-            convert_vm_image "$img" "qcow2" "output/${basename}.qcow2"
-        fi
-        if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vmdk" ]; then
-            convert_vm_image "$img" "vmdk" "output/${basename}.vmdk"
-        fi
-        if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vdi" ]; then
-            convert_vm_image "$img" "vdi" "output/${basename}.vdi"
-        fi
-        if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vhdx" ]; then
-            convert_vm_image "$img" "vhdx" "output/${basename}.vhdx"
-        fi
-    done
-fi
 
 log_info "构建完成!"
 
@@ -320,11 +204,9 @@ echo "=========================================="
 echo "构建完成!"
 echo "=========================================="
 echo "版本: ${VERSION}"
-echo "固件类型: ${FIRMWARE_TYPE}"
-echo "启动模式: ${BOOT_MODE}"
 echo ""
 echo "固件文件:"
-ls -lh output/*.img.gz 2>/dev/null || echo "未找到固件文件"
+ls -lh output/*.{img,gz,qcow2,vmdk,vdi,vhdx} 2>/dev/null || echo "未找到固件文件"
 echo ""
 echo "输出目录: $(pwd)/output"
 echo ""
@@ -338,8 +220,6 @@ ImmortalWrt 固件构建信息
 构建时间：$(date '+%Y-%m-%d %H:%M:%S')
 ImmortalWrt 版本：${VERSION}
 内核版本：${KMODS_SUBDIR}
-固件类型：${FIRMWARE_TYPE}
-启动模式：${BOOT_MODE}
 
 第三方软件版本:
 - EasyTier: ${EASYTIER_TAG}
@@ -349,7 +229,7 @@ ImmortalWrt 版本：${VERSION}
 - Mihomo: ${MIHOMO_TAG}
 
 文件列表:
-$(ls -lh output/*.img.gz)
+$(ls -lh output/*.{img,gz,qcow2,vmdk,vdi,vhdx} 2>/dev/null)
 EOF
 
 log_info "构建信息已保存到 output/build-info.txt"

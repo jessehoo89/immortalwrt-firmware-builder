@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget curl unzip zstd gzip tar make build-essential libssl-dev zlib1g-dev gawk git ccache libncurses5-dev libncursesw5-dev rsync python3 python3-pip python3-setuptools python3-yaml swig libpython3-dev qemu-utils
+          sudo apt-get install -y wget curl unzip zstd gzip tar make build-essential libssl-dev zlib1g-dev gawk git ccache libncurses5-dev libncursesw5-dev rsync python3 python3-pip python3-setuptools python3-yaml swig libpython3-dev
       
       - name: Create working directory
         run: |
@@ -143,23 +143,8 @@ jobs:
           make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log
           [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
           
-          echo "Converting to VM formats..."
-          for img in output/*.img; do
-            [ -f "$img" ] || continue
-            base=$(basename "$img" .img)
-            raw="${img%.gz}"
-            gunzip -c "$img" > "$raw"
-            qemu-img convert -f raw -O qcow2 "$raw" "${base}.qcow2" && gzip -f "${base}.qcow2"
-            qemu-img convert -f raw -O vmdk "$raw" "${base}.vmdk" && gzip -f "${base}.vmdk"
-            qemu-img convert -f raw -O vdi "$raw" "${base}.vdi" && gzip -f "${base}.vdi"
-            qemu-img convert -f raw -O vhdx "$raw" "${base}.vhdx" && gzip -f "${base}.vhdx"
-            rm -f "$raw"
-          done
-          
           mkdir -p ${{ github.workspace }}/firmware
-          cp output/*.gz ${{ github.workspace }}/firmware/ 2>/dev/null || true
-          cp output/*.manifest ${{ github.workspace }}/firmware/ 2>/dev/null || true
-          cp output/*.buildinfo ${{ github.workspace }}/firmware/ 2>/dev/null || true
+          cp output/*.{gz,qcow2,vmdk,vdi,vhdx,img,manifest,buildinfo} ${{ github.workspace }}/firmware/ 2>/dev/null || true
           
           echo "Firmware files:"
           ls -lh ${{ github.workspace }}/firmware/
