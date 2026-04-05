@@ -59,10 +59,10 @@
 
 ```bash
 # 拉取最新镜像
-docker pull jessehoo89/immortalwrt-x86-64:latest
+docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/immortalwrt_multiple_ethports:latest
 
 # 拉取指定构建版本
-docker pull jessehoo89/immortalwrt-x86-64:<构建编号>
+docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/immortalwrt_multiple_ethports:<构建编号>
 ```
 
 **Docker 镜像使用说明：**
@@ -73,6 +73,7 @@ docker pull jessehoo89/immortalwrt-x86-64:<构建编号>
 - 标签说明：
   - `latest`：最新构建版本
   - `<构建编号>`：对应 GitHub Actions 的运行编号
+- **注意**：`${{ secrets.DOCKER_HUB_USERNAME }}` 需要替换为您的 Docker Hub 用户名
 
 ## 📁 固件文件说明
 
