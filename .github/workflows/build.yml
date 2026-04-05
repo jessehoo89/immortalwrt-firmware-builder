@@ -74,11 +74,19 @@ jobs:
       - name: Download ImageBuilder
         run: |
           cd ${{ env.WORK_DIR }}
-          wget -q "${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/immortalwrt-imagebuilder-${{ steps.version.outputs.VERSION }}-x86-64.Linux-x86_64.tar.zst"
-          tar -I zstd -xf immortalwrt-imagebuilder-*.tar.zst
-          rm -f *.tar.zst
+          echo "Downloading ImageBuilder ${{ steps.version.outputs.VERSION }}..."
+          wget -v "${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/immortalwrt-imagebuilder-${{ steps.version.outputs.VERSION }}-x86-64.Linux-x86_64.tar.zst" -O imagebuilder.tar.zst
+          echo "Download complete. File size:"
+          ls -lh imagebuilder.tar.zst
+          echo "Checking file integrity..."
+          file imagebuilder.tar.zst
+          echo "Extracting..."
+          tar -I zstd -xvf imagebuilder.tar.zst
+          rm -f imagebuilder.tar.zst
           cd immortalwrt-imagebuilder-*
           echo "IMAGEBUILDER_DIR=$(pwd)" >> $GITHUB_ENV
+          echo "Extraction complete, listing files:"
+          ls -la
       
       - name: Configure repositories
         run: |
