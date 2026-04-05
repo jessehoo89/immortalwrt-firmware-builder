@@ -249,114 +249,66 @@ log_step "7. 构建固件..."
 # 检查并安装 qemu-img (用于转换虚拟机格式)
 if ! command -v qemu-img &> /dev/null; then
     log_info "安装 qemu-img 用于虚拟机格式转换..."
-    sudo apt-get install -y qemu-utils 2>/dev/null || sudo apt-get install -y qemu-img 2>/dev/null || true
+    sudo apt-get update && sudo apt-get install -y qemu-utils 2>/dev/null || true
 fi
 
 PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 
 rm -rf output bin/targets && mkdir -p output
 
-# 转换虚拟机格式
-convert_image() {
-    local input_file=$1
-    local format=$2
-    local output_file=$3
-    
-    if [ ! -f "$input_file" ]; then
-        log_warn "源文件不存在: $input_file"
-        return 1
-    fi
-    
-    # 先解压
-    local raw_file="${input_file%.gz}"
-    if [[ "$input_file" == *.gz ]]; then
-        log_info "解压 $input_file..."
-        gunzip -c "$input_file" > "$raw_file"
-    else
-        cp "$input_file" "$raw_file"
-    fi
-    
-    # 转换为目标格式
-    log_info "转换为 $format 格式: $output_file"
-    qemu-img convert -f raw -O "$format" "$raw_file" "$output_file"
-    
-    # 压缩
-    gzip -f "$output_file"
-    
-    # 清理临时文件
-    rm -f "$raw_file"
-    
-    log_info "完成: ${output_file}.gz"
-}
+# ImageBuilder 一次运行会生成所有格式：squashfs/ext4 + combined/combined-efi
+log_info "开始构建固件 (一次构建所有基础格式)..."
+make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log
 
-# 根据选择构建不同类型
-build_firmware() {
-    local type=$1
-    local boot=$2
-    local extra_vars=""
-
-    if [ "$type" = "squashfs" ]; then
-        extra_vars="DEVICE_TYPE=generic"
-    elif [ "$type" = "ext4" ]; then
-        extra_vars="DEVICE_TYPE=generic EXT4=true"
-    fi
-
-    log_info "构建固件: ${type} + ${boot}..."
-    make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" $extra_vars 2>&1 | tee build-${type}-${boot}.log
-    
-    # 转换虚拟机格式
-    if [ "$VM_FORMAT" != "img" ]; then
-        for img in output/*-${type}-${boot}.img; do
-            if [ -f "$img" ]; then
-                local basename=$(basename "$img" .img)
-                
-                if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "qcow2" ]; then
-                    convert_image "$img" "qcow2" "output/${basename}.qcow2"
-                fi
-                if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vmdk" ]; then
-                    convert_image "$img" "vmdk" "output/${basename}.vmdk"
-                fi
-                if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vdi" ]; then
-                    convert_image "$img" "vdi" "output/${basename}.vdi"
-                fi
-                if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vhdx" ]; then
-                    convert_image "$img" "vhdx" "output/${basename}.vhdx"
-                fi
-            fi
-        done
-    fi
-}
-
-if [ "$FIRMWARE_TYPE" = "both" ]; then
-    if [ "$BOOT_MODE" = "both" ]; then
-        build_firmware "squashfs" "combined"
-        build_firmware "squashfs" "combined-efi"
-        build_firmware "ext4" "combined"
-        build_firmware "ext4" "combined-efi"
-    elif [ "$BOOT_MODE" = "combined" ]; then
-        build_firmware "squashfs" "combined"
-        build_firmware "ext4" "combined"
-    elif [ "$BOOT_MODE" = "combined-efi" ]; then
-        build_firmware "squashfs" "combined-efi"
-        build_firmware "ext4" "combined-efi"
-    fi
-elif [ "$FIRMWARE_TYPE" = "squashfs" ]; then
-    if [ "$BOOT_MODE" = "both" ]; then
-        build_firmware "squashfs" "combined"
-        build_firmware "squashfs" "combined-efi"
-    else
-        build_firmware "squashfs" "$BOOT_MODE"
-    fi
-elif [ "$FIRMWARE_TYPE" = "ext4" ]; then
-    if [ "$BOOT_MODE" = "both" ]; then
-        build_firmware "ext4" "combined"
-        build_firmware "ext4" "combined-efi"
-    else
-        build_firmware "ext4" "$BOOT_MODE"
-    fi
-fi
-
+# 复制基础固件
 [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
+
+# 转换虚拟机格式
+if [ "$VM_FORMAT" != "img" ] && command -v qemu-img &> /dev/null; then
+    log_step "转换虚拟机格式..."
+    
+    convert_vm_image() {
+        local input_file=$1
+        local format=$2
+        local output_file=$3
+        
+        if [ ! -f "$input_file" ]; then
+            return 1
+        fi
+        
+        # 解压
+        local raw_file="${input_file%.gz}"
+        if [[ "$input_file" == *.gz ]]; then
+            gunzip -c "$input_file" > "$raw_file"
+        else
+            cp "$input_file" "$raw_file"
+        fi
+        
+        # 转换
+        qemu-img convert -f raw -O "$format" "$raw_file" "$output_file"
+        gzip -f "$output_file"
+        rm -f "$raw_file"
+    }
+    
+    # 遍历所有 img 文件并转换
+    for img in output/*.img; do
+        [ -f "$img" ] || continue
+        basename=$(basename "$img" .img)
+        
+        if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "qcow2" ]; then
+            convert_vm_image "$img" "qcow2" "output/${basename}.qcow2"
+        fi
+        if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vmdk" ]; then
+            convert_vm_image "$img" "vmdk" "output/${basename}.vmdk"
+        fi
+        if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vdi" ]; then
+            convert_vm_image "$img" "vdi" "output/${basename}.vdi"
+        fi
+        if [ "$VM_FORMAT" = "all" ] || [ "$VM_FORMAT" = "vhdx" ]; then
+            convert_vm_image "$img" "vhdx" "output/${basename}.vhdx"
+        fi
+    done
+fi
 
 log_info "构建完成!"
 

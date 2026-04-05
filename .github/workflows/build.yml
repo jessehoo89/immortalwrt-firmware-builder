@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget curl unzip zstd gzip tar make build-essential libssl-dev zlib1g-dev gawk git ccache libncurses5-dev libncursesw5-dev rsync python3 python3-pip python3-setuptools python3-yaml swig libpython3-dev
+          sudo apt-get install -y wget curl unzip zstd gzip tar make build-essential libssl-dev zlib1g-dev gawk git ccache libncurses5-dev libncursesw5-dev rsync python3 python3-pip python3-setuptools python3-yaml swig libpython3-dev qemu-utils
       
       - name: Create working directory
         run: |
@@ -68,16 +68,12 @@ jobs:
           cd ${{ env.WORK_DIR }}
           echo "Downloading ImageBuilder ${{ steps.version.outputs.VERSION }}..."
           wget -v "${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/immortalwrt-imagebuilder-${{ steps.version.outputs.VERSION }}-x86-64.Linux-x86_64.tar.zst" -O imagebuilder.tar.zst
-          echo "Download complete. File size:"
           ls -lh imagebuilder.tar.zst
-          echo "Checking file integrity..."
           file imagebuilder.tar.zst
-          echo "Extracting..."
           tar -I zstd -xvf imagebuilder.tar.zst
           rm -f imagebuilder.tar.zst
           cd immortalwrt-imagebuilder-*
           echo "IMAGEBUILDER_DIR=$(pwd)" >> $GITHUB_ENV
-          echo "Extraction complete, listing files:"
           ls -la
       
       - name: Configure repositories
@@ -96,25 +92,19 @@ jobs:
         run: |
           cd ${{ env.IMAGEBUILDER_DIR }}/packages
           
-          # 构建 GitHub 下载 URL（根据是否使用代理）
-          if [ -n "${{ env.GHPROXY }}" ]; then
-            GHPREFIX="${{ env.GHPROXY }}/"
-          else
-            GHPREFIX=""
-          fi
+          GHPREFIX=""
           
-          # EasyTier
           wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${{ steps.version.outputs.EASYTIER_TAG }}/EasyTier-${{ steps.version.outputs.EASYTIER_TAG }}-x86_64-22.03.7.zip"
           unzip -q EasyTier-*.zip && rm -f EasyTier-*.zip
           
-          # Lucky
           wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-app-lucky_2.2.2-r1_all.ipk"
           wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-i18n-lucky-zh-cn_25.051.13443.e78d498_all.ipk"
           wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/lucky_2.19.5_Openwrt_x86_64.ipk"
           
-          # AdGuardHome LuCI
           wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-app-adguardhome_1.19_all.ipk"
           wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
+          
+          ls -lh
       
       - name: Prepare FILES directory
         run: |
@@ -129,35 +119,50 @@ jobs:
           echo "src/gz immortalwrt_routing ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/routing" >> FILES/etc/opkg/distfeeds.conf
           echo "src/gz immortalwrt_telephony ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/telephony" >> FILES/etc/opkg/distfeeds.conf
           
-          # AdGuardHome core
           wget -q "${GHPREFIX}https://github.com/AdguardTeam/AdGuardHome/releases/download/${{ steps.version.outputs.ADG_CORE_TAG }}/AdGuardHome_linux_amd64.tar.gz"
           tar -xzf AdGuardHome_linux_amd64.tar.gz
           mv AdGuardHome/AdGuardHome FILES/usr/bin/AdGuardHome/
           chmod +x FILES/usr/bin/AdGuardHome/AdGuardHome
           rm -rf AdGuardHome AdGuardHome_linux_amd64.tar.gz
           
-          # Mihomo core
           wget -q "${GHPREFIX}https://github.com/MetaCubeX/mihomo/releases/download/${{ steps.version.outputs.MIHOMO_TAG }}/mihomo-linux-amd64-${{ steps.version.outputs.MIHOMO_TAG }}.gz"
           gunzip -c mihomo-*.gz > FILES/etc/openclash/core/clash_meta
           chmod +x FILES/etc/openclash/core/clash_meta
           rm -f mihomo-*.gz
+          
+          find FILES -type f
       
       - name: Build firmware
         run: |
           cd ${{ env.IMAGEBUILDER_DIR }}
           PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
           rm -rf output bin/targets && mkdir -p output
+          
+          # ImageBuilder 一次运行生成所有基础格式 (squashfs/ext4 + combined/combined-efi)
+          echo "Building all firmware formats..."
           make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log
           [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
+          
+          echo "Converting to VM formats..."
+          for img in output/*.img; do
+            [ -f "$img" ] || continue
+            base=$(basename "$img" .img)
+            raw="${img%.gz}"
+            gunzip -c "$img" > "$raw"
+            qemu-img convert -f raw -O qcow2 "$raw" "${base}.qcow2" && gzip -f "${base}.qcow2"
+            qemu-img convert -f raw -O vmdk "$raw" "${base}.vmdk" && gzip -f "${base}.vmdk"
+            qemu-img convert -f raw -O vdi "$raw" "${base}.vdi" && gzip -f "${base}.vdi"
+            qemu-img convert -f raw -O vhdx "$raw" "${base}.vhdx" && gzip -f "${base}.vhdx"
+            rm -f "$raw"
+          done
+          
           mkdir -p ${{ github.workspace }}/firmware
           cp output/*.gz ${{ github.workspace }}/firmware/ 2>/dev/null || true
-          cp output/*.img ${{ github.workspace }}/firmware/ 2>/dev/null || true
-          cp output/*.qcow2 ${{ github.workspace }}/firmware/ 2>/dev/null || true
-          cp output/*.vdi ${{ github.workspace }}/firmware/ 2>/dev/null || true
-          cp output/*.vmdk ${{ github.workspace }}/firmware/ 2>/dev/null || true
-          cp output/*.vhdx ${{ github.workspace }}/firmware/ 2>/dev/null || true
           cp output/*.manifest ${{ github.workspace }}/firmware/ 2>/dev/null || true
           cp output/*.buildinfo ${{ github.workspace }}/firmware/ 2>/dev/null || true
+          
+          echo "Firmware files:"
+          ls -lh ${{ github.workspace }}/firmware/
       
       - name: Generate build info
         run: |
@@ -182,7 +187,7 @@ jobs:
           name: "ImmortalWrt ${{ steps.version.outputs.VERSION }} - Build at ${{ github.run_started_at }}"
           body_path: ${{ github.workspace }}/firmware/build-info.txt
           files: |
-            ${{ github.workspace }}/firmware/*.img.gz
+            ${{ github.workspace }}/firmware/*.gz
             ${{ github.workspace }}/firmware/*.manifest
             ${{ github.workspace }}/firmware/*.buildinfo
           draft: false
