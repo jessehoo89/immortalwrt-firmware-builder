@@ -7,22 +7,6 @@ on:
         description: 'ImmortalWrt Version (leave empty for latest)'
         required: false
         default: ''
-      use_proxy:
-        description: 'Use GitHub proxy (for regions with network issues)'
-        required: true
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-      upload_release:
-        description: 'Upload to GitHub Release'
-        required: true
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
   schedule:
     - cron: '0 2 * * 0'
 
@@ -77,16 +61,7 @@ jobs:
           echo "ADG_TAG=${ADG_TAG:-v1.19}" >> $GITHUB_OUTPUT
           echo "ADG_CORE_TAG=${ADG_CORE_TAG:-v0.107.55}" >> $GITHUB_OUTPUT
           echo "MIHOMO_TAG=${MIHOMO_TAG:-v1.19.0}" >> $GITHUB_OUTPUT
-      
-      - name: Set proxy
-        run: |
-          if [ "${{ github.event.inputs.use_proxy }}" = "true" ]; then
-            echo "GHPROXY=https://gh-proxy.org" >> $GITHUB_ENV
-            echo "Using GitHub proxy"
-          else
-            echo "GHPROXY=" >> $GITHUB_ENV
-            echo "Direct connection (no proxy)"
-          fi
+          echo "GHPROXY=" >> $GITHUB_ENV
       
       - name: Download ImageBuilder
         run: |
@@ -196,11 +171,10 @@ jobs:
           echo "- Mihomo: ${{ steps.version.outputs.MIHOMO_TAG }}" >> build-info.txt
       
       - name: Upload to Release
-        if: github.event.inputs.upload_release == 'true' || github.event_name == 'schedule'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: immortalwrt-${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
-          name: "ImmortalWrt ${{ steps.version.outputs.VERSION }} - Build #${{ github.run_number }}"
+          name: "ImmortalWrt ${{ steps.version.outputs.VERSION }} - Build at ${{ github.run_started_at }}"
           body_path: ${{ github.workspace }}/firmware/build-info.txt
           files: |
             ${{ github.workspace }}/firmware/*.img.gz
