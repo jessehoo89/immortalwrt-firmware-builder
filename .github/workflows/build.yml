@@ -144,7 +144,7 @@ jobs:
           [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
           
           mkdir -p ${{ github.workspace }}/firmware
-          cp output/*.{gz,qcow2,vmdk,vdi,vhdx,img,manifest,buildinfo} ${{ github.workspace }}/firmware/ 2>/dev/null || true
+          cp -r output/* ${{ github.workspace }}/firmware/
           
           echo "Firmware files:"
           ls -lh ${{ github.workspace }}/firmware/
@@ -172,9 +172,7 @@ jobs:
           name: "ImmortalWrt ${{ steps.version.outputs.VERSION }} - Build at ${{ github.run_started_at }}"
           body_path: ${{ github.workspace }}/firmware/build-info.txt
           files: |
-            ${{ github.workspace }}/firmware/*.gz
-            ${{ github.workspace }}/firmware/*.manifest
-            ${{ github.workspace }}/firmware/*.buildinfo
+            ${{ github.workspace }}/firmware/*
           draft: false
           prerelease: false
           make_latest: true
