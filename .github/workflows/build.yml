@@ -139,20 +139,15 @@ jobs:
           PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
           rm -rf output bin/targets && mkdir -p output
           
-          # ImageBuilder 一次运行生成所有基础格式 (squashfs/ext4 + combined/combined-efi)
+          # ImageBuilder 一次运行生成所有格式
           echo "Building all firmware formats..."
           make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log
-          [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
           
-          # 下载虚拟机格式镜像
-          echo "Downloading VM formats..."
-          cd output
-          for suffix in combined combined-efi; do
-            for fmt in qcow2 vmdk vdi vhdx; do
-              wget -q "${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/immortalwrt-${{ steps.version.outputs.VERSION }}-immortalwrt-x86-64-generic-${suffix}.${fmt}.gz" 2>/dev/null || true
-            done
-          done
-          cd ..
+          # 显示构建产物
+          echo "Build output:"
+          find bin/targets -type f \( -name "*.img.gz" -o -name "*.qcow2.gz" -o -name "*.vmdk.gz" -o -name "*.vdi.gz" -o -name "*.vhdx.gz" \) 2>/dev/null || true
+          
+          [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
           
           mkdir -p ${{ github.workspace }}/firmware
           cp -r output/* ${{ github.workspace }}/firmware/
