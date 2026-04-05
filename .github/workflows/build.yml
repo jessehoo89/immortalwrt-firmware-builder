@@ -62,6 +62,7 @@ jobs:
           echo "ADG_CORE_TAG=${ADG_CORE_TAG:-v0.107.55}" >> $GITHUB_OUTPUT
           echo "MIHOMO_TAG=${MIHOMO_TAG:-v1.19.0}" >> $GITHUB_OUTPUT
           echo "GHPROXY=" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date '+%Y-%m-%d %H:%M')" >> $GITHUB_ENV
       
       - name: Download ImageBuilder
         run: |
@@ -143,6 +144,16 @@ jobs:
           make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log
           [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
           
+          # 下载虚拟机格式镜像
+          echo "Downloading VM formats..."
+          cd output
+          for suffix in combined combined-efi; do
+            for fmt in qcow2 vmdk vdi vhdx; do
+              wget -q "${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/immortalwrt-${{ steps.version.outputs.VERSION }}-immortalwrt-x86-64-generic-${suffix}.${fmt}.gz" 2>/dev/null || true
+            done
+          done
+          cd ..
+          
           mkdir -p ${{ github.workspace }}/firmware
           cp -r output/* ${{ github.workspace }}/firmware/
           
@@ -169,7 +180,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: immortalwrt-${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
-          name: "ImmortalWrt ${{ steps.version.outputs.VERSION }} - Build at ${{ github.run_started_at }}"
+          name: "ImmortalWrt ${{ steps.version.outputs.VERSION }} - Build at ${{ env.BUILD_TIME }}"
           body_path: ${{ github.workspace }}/firmware/build-info.txt
           files: |
             ${{ github.workspace }}/firmware/*
