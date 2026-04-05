@@ -8,6 +8,7 @@
   - 支持手动触发和定时构建（每周日凌晨 2 点）
   - 自动获取 ImmortalWrt 和第三方插件最新版本
   - 自动上传固件到 GitHub Release
+  - 自动构建并发布 Docker 镜像到 Docker Hub
   
 - 📦 预装常用插件
   - EasyTier - 智能组网
