@@ -173,6 +173,11 @@ jobs:
           echo "- AdGuardHome LuCI: ${{ steps.version.outputs.ADG_TAG }}" >> build-info.txt
           echo "- AdGuardHome Core: ${{ steps.version.outputs.ADG_CORE_TAG }}" >> build-info.txt
           echo "- Mihomo: ${{ steps.version.outputs.MIHOMO_TAG }}" >> build-info.txt
+          echo "" >> build-info.txt
+          echo "Docker Image:" >> build-info.txt
+          echo "- Repository: ${{ env.DOCKER_REPO }}" >> build-info.txt
+          echo "- Tags: ${{ env.DOCKER_TAG }}, ${{ env.BUILD_DATE }}" >> build-info.txt
+          echo "- Pull: docker pull ${{ env.DOCKER_REPO }}:${{ env.DOCKER_TAG }}" >> build-info.txt
       
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
