@@ -8,6 +8,7 @@
 - 📦 **到手可用** - 集成常用必备工具和第三方软件，自动保持更新
 - 🔄 **自动获取最新版本** - 自动检测 ImmortalWrt 和第三方插件的最新版本
 - 🎯 **自动发布** - 构建完成后自动上传到 GitHub Release
+- 🐳 **Docker 镜像发布** - 自动构建并发布 Docker 镜像到 Docker Hub
 - ⏰ **定时构建** - 每周日凌晨 2 点自动构建最新版
 - 📝 **详细日志** - 完整的构建信息和软件版本记录
 
@@ -51,6 +52,27 @@
 
 - **GitHub Release**：在仓库的 Releases 页面下载
 - **Actions 产物**：在 Actions 页面的构建任务中下载（保留 30 天）
+
+### 5. 使用 Docker 镜像
+
+构建完成后，Docker 镜像会自动发布到 Docker Hub：
+
+```bash
+# 拉取最新镜像
+docker pull jessehoo89/immortalwrt-x86-64:latest
+
+# 拉取指定构建版本
+docker pull jessehoo89/immortalwrt-x86-64:<构建编号>
+```
+
+**Docker 镜像使用说明：**
+
+- 镜像基于 `immortalwrt-x86-64-generic-rootfs.tar.gz` 构建
+- 包含完整的 ImmortalWrt 文件系统
+- 可用于容器化部署或作为基础镜像
+- 标签说明：
+  - `latest`：最新构建版本
+  - `<构建编号>`：对应 GitHub Actions 的运行编号
 
 ## 📁 固件文件说明
 
