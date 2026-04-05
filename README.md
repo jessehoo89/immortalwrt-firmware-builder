@@ -4,9 +4,9 @@
 
 ## ✨ 功能特性
 
+- 🔧 **基于官方 ImageBuilder** - 内核 Hash 值不变，可安装官方 kmod 插件
+- 📦 **到手可用** - 集成常用必备工具和第三方软件，自动保持更新
 - 🔄 **自动获取最新版本** - 自动检测 ImmortalWrt 和第三方插件的最新版本
-- 📦 **预装常用插件** - EasyTier、Lucky、AdGuardHome、OpenClash 等
-- 🌏 **国内镜像加速** - 使用 USTC 镜像源和 GitHub 代理
 - 🎯 **自动发布** - 构建完成后自动上传到 GitHub Release
 - ⏰ **定时构建** - 每周日凌晨 2 点自动构建最新版
 - 📝 **详细日志** - 完整的构建信息和软件版本记录
@@ -39,10 +39,7 @@
 1. 进入仓库的 **Actions** 标签页
 2. 选择 **🚀 ImmortalWrt 固件构建** 工作流
 3. 点击 **Run workflow** 按钮
-4. 配置选项：
-   - **版本**：留空自动获取最新版，或指定版本如 `24.10.5`
-   - **上传 Release**：选择是否发布到 GitHub Release
-5. 点击 **Run workflow** 开始构建
+4. 点击 **Run workflow** 开始构建（版本留空自动获取最新版）
 
 ### 3. 自动定时构建
 
@@ -57,12 +54,21 @@
 
 ## 📁 固件文件说明
 
+### 物理机固件
 | 文件类型 | 用途 | 推荐 |
 |---------|------|------|
 | `*-squashfs-combined.img.gz` | 传统 BIOS 启动 | ✅ 推荐 |
 | `*-squashfs-combined-efi.img.gz` | UEFI 启动 | ✅ 推荐 |
 | `*-ext4-combined.img.gz` | 传统 BIOS，可写分区 | 可选 |
 | `*-ext4-combined-efi.img.gz` | UEFI，可写分区 | 可选 |
+
+### 虚拟机固件
+| 文件类型 | 平台 | 用途 |
+|---------|------|------|
+| `*.qcow2.gz` | QEMU/KVM | 虚拟化环境 |
+| `*.vmdk.gz` | VMware | VMware 虚拟机 |
+| `*.vdi.gz` | VirtualBox | VirtualBox 虚拟机 |
+| `*.vhdx.gz` | Hyper-V | Windows Hyper-V |
 
 ## ⚙️ 自定义配置
 
@@ -88,14 +94,6 @@ schedule:
 
 时间格式参考：[Cron 表达式](https://crontab.guru/)
 
-### 添加其他架构
-
-目前支持 `x86/64` 架构，如需支持其他架构（如 `arm64`、`mips`），需要：
-
-1. 修改 ImageBuilder 下载链接
-2. 调整软件源配置
-3. 更新 FILES 目录中的二进制文件架构
-
 ## 🔧 第三方软件版本
 
 构建时会自动获取以下软件的最新版本：
@@ -108,20 +106,6 @@ schedule:
 | AdGuardHome 核心 | AdguardTeam/AdGuardHome | 广告过滤核心 |
 | Mihomo | MetaCubeX/mihomo | OpenClash 内核 |
 
-## 📝 构建日志
-
-构建过程中会生成详细的日志，包括：
-
-- 版本信息获取
-- ImageBuilder 下载和解压
-- 软件源配置
-- 第三方 IPK 下载
-- FILES 目录准备
-- 固件构建过程
-- 输出文件列表
-
-可在 Actions 页面查看实时日志。
-
 ## ⚠️ 注意事项
 
 1. **GitHub Actions 限制**
@@ -133,17 +117,22 @@ schedule:
    - Release 存储无限制（合理使用）
    - Actions 产物保留 30 天
 
-3. **网络问题**
-   - 已配置 GitHub 代理加速下载
-   - 使用 USTC 镜像源提高软件包下载速度
-
-4. **固件兼容性**
+3. **固件兼容性**
    - 构建前请确认目标硬件架构
    - 建议在虚拟机中测试后再部署到生产环境
 
 ## 🛠️ 本地构建
 
-如需在本地构建，参考 [`/immortalwrt-build/BUILD_GUIDE.md`](/immortalwrt-build/BUILD_GUIDE.md) 文档。
+如需在本地构建，运行：
+
+```bash
+chmod +x build-local.sh
+./build-local.sh
+```
+
+脚本会交互式询问：
+- 镜像源选择（官方/中科大）
+- 是否使用 GitHub 代理
 
 ## 📄 许可证
 
@@ -156,9 +145,8 @@ schedule:
 - [Lucky](https://github.com/gdy666/luci-app-lucky)
 - [AdGuardHome](https://github.com/AdguardTeam/AdGuardHome)
 - [OpenClash](https://github.com/vernesong/OpenClash)
-- [USTC Linux 用户协会镜像站](https://mirrors.ustc.edu.cn/)
+- [ImmortalWrt 官方镜像站](https://downloads.immortalwrt.org/)
 
 ---
 
-**构建时间**: 2026-04-05  
 **文档版本**: 1.0.0
