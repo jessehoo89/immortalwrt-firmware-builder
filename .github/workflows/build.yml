@@ -7,6 +7,14 @@ on:
         description: 'ImmortalWrt Version (leave empty for latest)'
         required: false
         default: ''
+      use_proxy:
+        description: 'Use GitHub proxy (for regions with network issues)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
       upload_release:
         description: 'Upload to GitHub Release'
         required: true
@@ -19,8 +27,7 @@ on:
     - cron: '0 2 * * 0'
 
 env:
-  MIRROR: "https://mirrors.ustc.edu.cn/immortalwrt"
-  GHPROXY: "https://gh-proxy.org"
+  MIRROR: "https://downloads.immortalwrt.org"
 
 jobs:
   build:
@@ -70,6 +77,16 @@ jobs:
           echo "ADG_TAG=${ADG_TAG:-v1.19}" >> $GITHUB_OUTPUT
           echo "ADG_CORE_TAG=${ADG_CORE_TAG:-v0.107.55}" >> $GITHUB_OUTPUT
           echo "MIHOMO_TAG=${MIHOMO_TAG:-v1.19.0}" >> $GITHUB_OUTPUT
+      
+      - name: Set proxy
+        run: |
+          if [ "${{ github.event.inputs.use_proxy }}" = "true" ]; then
+            echo "GHPROXY=https://gh-proxy.org" >> $GITHUB_ENV
+            echo "Using GitHub proxy"
+          else
+            echo "GHPROXY=" >> $GITHUB_ENV
+            echo "Direct connection (no proxy)"
+          fi
       
       - name: Download ImageBuilder
         run: |
