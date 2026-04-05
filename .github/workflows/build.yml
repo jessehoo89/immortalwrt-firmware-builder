@@ -14,7 +14,7 @@ env:
   MIRROR: "https://downloads.immortalwrt.org"
   DOCKER_REPO: "jessehoo89/immortalwrt-x86-64"
   DOCKER_TAG: "latest"
-  BUILD_DATE: "${{ github.run_id }}"
+  BUILD_DATE: "${{ github.run_number }}"
 
 jobs:
   build:
