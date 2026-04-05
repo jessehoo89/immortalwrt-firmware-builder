@@ -1,14 +1,14 @@
-name: 🚀 ImmortalWrt 固件构建
+name: Build ImmortalWrt Firmware
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'ImmortalWrt 版本 (留空则自动获取最新版)'
+        description: 'ImmortalWrt Version (leave empty for latest)'
         required: false
         default: ''
       upload_release:
-        description: '是否上传到 GitHub Release'
+        description: 'Upload to GitHub Release'
         required: true
         default: 'true'
         type: choice
@@ -16,13 +16,11 @@ on:
           - 'true'
           - 'false'
   schedule:
-    # 每周日凌晨 2 点自动构建
     - cron: '0 2 * * 0'
 
 env:
   MIRROR: "https://mirrors.ustc.edu.cn/immortalwrt"
   GHPROXY: "https://gh-proxy.org"
-  WORK_DIR: ${{ github.workspace }}/immortalwrt
 
 jobs:
   build:
@@ -31,295 +29,138 @@ jobs:
       contents: write
     
     steps:
-      - name: 📦 检出仓库
+      - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: 🛠️ 安装依赖
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            wget \
-            curl \
-            unzip \
-            zstd \
-            gzip \
-            tar \
-            make \
-            build-essential \
-            libssl-dev \
-            zlib1g-dev \
-            gawk \
-            git \
-            ccache \
-            libncurses5-dev \
-            libncursesw5-dev \
-            rsync \
-            python3 \
-            python3-pip \
-            python3-setuptools \
-            python3-yaml \
-            swig \
-            libpython3-dev
+          sudo apt-get install -y wget curl unzip zstd gzip tar make build-essential libssl-dev zlib1g-dev gawk git ccache libncurses5-dev libncursesw5-dev rsync python3 python3-pip python3-setuptools python3-yaml swig libpython3-dev
       
-      - name: 📂 创建工作目录
+      - name: Create working directory
         run: |
-          mkdir -p ${{ env.WORK_DIR }}
-          cd ${{ env.WORK_DIR }}
-          echo "WORK_DIR=$(pwd)" >> $GITHUB_ENV
+          mkdir -p ${{ github.workspace }}/immortalwrt
+          echo "WORK_DIR=${{ github.workspace }}/immortalwrt" >> $GITHUB_ENV
       
-      - name: 📋 获取版本信息
+      - name: Get version info
         id: version
         run: |
           cd ${{ env.WORK_DIR }}
           
-          # 获取用户指定的版本或自动获取最新版
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION="${{ github.event.inputs.version }}"
-            echo "使用指定版本：${VERSION}"
           else
-            # 从 USTC 镜像获取最新稳定版
-            VERSION=$(curl -s "${{ env.MIRROR }}/releases/" | \
-              grep -oE '/immortalwrt/releases/[0-9]+\.[0-9]+\.[0-9]+[^/]*' | \
-              sed 's|.*/||' | \
-              grep -v 'SNAPSHOT' | \
-              grep -v 'rc' | \
-              sort -V | \
-              tail -1)
-            
-            if [ -z "$VERSION" ]; then
-              VERSION="24.10.5"
-            fi
-            echo "自动获取最新版本：${VERSION}"
+            VERSION=$(curl -s "${{ env.MIRROR }}/releases/" | grep -oE '/immortalwrt/releases/[0-9]+\.[0-9]+\.[0-9]+[^/]*' | sed 's|.*/||' | grep -v 'SNAPSHOT' | grep -v 'rc' | sort -V | tail -1)
+            [ -z "$VERSION" ] && VERSION="24.10.5"
           fi
           
-          # 获取 kmods 子目录
-          KMODS_SUBDIR=$(curl -s "${{ env.MIRROR }}/releases/${VERSION}/targets/x86/64/kmods/" | \
-            grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-[0-9a-f-]+' | \
-            head -1)
+          KMODS_SUBDIR=$(curl -s "${{ env.MIRROR }}/releases/${VERSION}/targets/x86/64/kmods/" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-[0-9a-f-]+' | head -1)
+          [ -z "$KMODS_SUBDIR" ] && KMODS_SUBDIR="6.6.122-1-e7e50fbc0aafa7443418a79928da2602"
           
-          if [ -z "$KMODS_SUBDIR" ]; then
-            KMODS_SUBDIR="6.6.122-1-e7e50fbc0aafa7443418a79928da2602"
-          fi
+          EASYTIER_TAG=$(curl -s "https://api.github.com/repos/EasyTier/luci-app-easytier/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+          LUCKY_TAG=$(curl -s "https://api.github.com/repos/gdy666/luci-app-lucky/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+          ADG_TAG=$(curl -s "https://api.github.com/repos/stevenjoezhang/luci-app-adguardhome/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+          ADG_CORE_TAG=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardHome/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+          MIHOMO_TAG=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
           
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
           echo "KMODS_SUBDIR=${KMODS_SUBDIR}" >> $GITHUB_OUTPUT
-          
-          # 获取第三方软件最新版本
-          echo "获取第三方软件最新版本..."
-          
-          EASYTIERTAG=$(curl -s "https://api.github.com/repos/EasyTier/luci-app-easytier/releases/latest" | \
-            grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "EASYTIERTAG=${EASYTIERTAG:-v2.5.0}" >> $GITHUB_OUTPUT
-          
-          LUCKYTAG=$(curl -s "https://api.github.com/repos/gdy666/luci-app-lucky/releases/latest" | \
-            grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "LUCKYTAG=${LUCKYTAG:-v2.19.5}" >> $GITHUB_OUTPUT
-          
-          ADGTAG=$(curl -s "https://api.github.com/repos/stevenjoezhang/luci-app-adguardhome/releases/latest" | \
-            grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "ADGTAG=${ADGTAG:-v1.19}" >> $GITHUB_OUTPUT
-          
-          ADGCORETAG=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardHome/releases/latest" | \
-            grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "ADGCORETAG=${ADGCORETAG:-v0.107.55}" >> $GITHUB_OUTPUT
-          
-          MIHOMOTAG=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | \
-            grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "MIHOMOTAG=${MIHOMOTAG:-v1.19.0}" >> $GITHUB_OUTPUT
+          echo "EASYTIER_TAG=${EASYTIER_TAG:-v2.5.0}" >> $GITHUB_OUTPUT
+          echo "LUCKY_TAG=${LUCKY_TAG:-v2.19.5}" >> $GITHUB_OUTPUT
+          echo "ADG_TAG=${ADG_TAG:-v1.19}" >> $GITHUB_OUTPUT
+          echo "ADG_CORE_TAG=${ADG_CORE_TAG:-v0.107.55}" >> $GITHUB_OUTPUT
+          echo "MIHOMO_TAG=${MIHOMO_TAG:-v1.19.0}" >> $GITHUB_OUTPUT
       
-      - name: ⬇️ 下载 ImageBuilder
+      - name: Download ImageBuilder
         run: |
           cd ${{ env.WORK_DIR }}
-          
-          echo "下载 ImageBuilder ${{ steps.version.outputs.VERSION }}..."
-          wget -q --show-progress \
-            "${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/immortalwrt-imagebuilder-${{ steps.version.outputs.VERSION }}-x86-64.Linux-x86_64.tar.zst" \
-            -O imagebuilder.tar.zst
-          
-          echo "解压中..."
-          tar -I zstd -xf imagebuilder.tar.zst
-          rm -f imagebuilder.tar.zst
-          
-          cd immortalwrt-imagebuilder-${{ steps.version.outputs.VERSION }}-x86-64.Linux-x86_64
+          wget -q "${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/immortalwrt-imagebuilder-${{ steps.version.outputs.VERSION }}-x86-64.Linux-x86_64.tar.zst"
+          tar -I zstd -xf immortalwrt-imagebuilder-*.tar.zst
+          rm -f *.tar.zst
+          cd immortalwrt-imagebuilder-*
           echo "IMAGEBUILDER_DIR=$(pwd)" >> $GITHUB_ENV
       
-      - name: ⚙️ 配置软件源
+      - name: Configure repositories
         run: |
           cd ${{ env.IMAGEBUILDER_DIR }}
-          
-          cat > repositories.conf << EOF
-src/gz immortalwrt_core ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/packages
-src/gz immortalwrt_base ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/base
-src/gz immortalwrt_kmods ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/kmods/${{ steps.version.outputs.KMODS_SUBDIR }}
-src/gz immortalwrt_luci ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/luci
-src/gz immortalwrt_packages ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/packages
-src/gz immortalwrt_routing ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/routing
-src/gz immortalwrt_telephony ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/telephony
-src imagebuilder file:packages
-EOF
-          
-          echo "软件源已配置"
-          cat repositories.conf
+          echo "src/gz immortalwrt_core ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/packages" > repositories.conf
+          echo "src/gz immortalwrt_base ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/base" >> repositories.conf
+          echo "src/gz immortalwrt_kmods ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/kmods/${{ steps.version.outputs.KMODS_SUBDIR }}" >> repositories.conf
+          echo "src/gz immortalwrt_luci ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/luci" >> repositories.conf
+          echo "src/gz immortalwrt_packages ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/packages" >> repositories.conf
+          echo "src/gz immortalwrt_routing ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/routing" >> repositories.conf
+          echo "src/gz immortalwrt_telephony ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/telephony" >> repositories.conf
+          echo "src imagebuilder file:packages" >> repositories.conf
       
-      - name: 📦 下载第三方 IPK 包
+      - name: Download third-party packages
         run: |
           cd ${{ env.IMAGEBUILDER_DIR }}/packages
-          
-          # EasyTier
-          echo "下载 EasyTier (${{ steps.version.outputs.EASYTIERTAG }})..."
-          wget -q "${{ env.GHPROXY }}/https://github.com/EasyTier/luci-app-easytier/releases/download/${{ steps.version.outputs.EASYTIERTAG }}/EasyTier-${{ steps.version.outputs.EASYTIERTAG }}-x86_64-22.03.7.zip"
-          unzip -qq -o EasyTier-*.zip
-          rm -f EasyTier-*.zip
-          
-          # Lucky
-          echo "下载 Lucky (${{ steps.version.outputs.LUCKYTAG }})..."
-          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKYTAG }}/luci-app-lucky_2.2.2-r1_all.ipk"
-          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKYTAG }}/luci-i18n-lucky-zh-cn_25.051.13443.e78d498_all.ipk"
-          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKYTAG }}/lucky_2.19.5_Openwrt_x86_64.ipk"
-          
-          # AdGuardHome LuCI
-          echo "下载 AdGuardHome LuCI (${{ steps.version.outputs.ADTAG }})..."
-          wget -q "${{ env.GHPROXY }}/https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADTAG }}/luci-app-adguardhome_1.19_all.ipk"
-          wget -q "${{ env.GHPROXY }}/https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADTAG }}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
-          
-          echo "第三方 IPK 下载完成"
-          ls -lh
+          wget -q "${{ env.GHPROXY }}/https://github.com/EasyTier/luci-app-easytier/releases/download/${{ steps.version.outputs.EASYTIER_TAG }}/EasyTier-${{ steps.version.outputs.EASYTIER_TAG }}-x86_64-22.03.7.zip"
+          unzip -q EasyTier-*.zip && rm -f EasyTier-*.zip
+          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-app-lucky_2.2.2-r1_all.ipk"
+          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-i18n-lucky-zh-cn_25.051.13443.e78d498_all.ipk"
+          wget -q "${{ env.GHPROXY }}/https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/lucky_2.19.5_Openwrt_x86_64.ipk"
+          wget -q "${{ env.GHPROXY }}/https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-app-adguardhome_1.19_all.ipk"
+          wget -q "${{ env.GHPROXY }}/https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
       
-      - name: 📁 准备 FILES 目录
+      - name: Prepare FILES directory
         run: |
           cd ${{ env.IMAGEBUILDER_DIR }}
+          mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg
           
-          # 创建目录结构
-          mkdir -p FILES/usr/bin/AdGuardHome
-          mkdir -p FILES/etc/openclash/core
-          mkdir -p FILES/etc/opkg
+          echo "src/gz immortalwrt_core ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/packages" > FILES/etc/opkg/distfeeds.conf
+          echo "src/gz immortalwrt_base ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/base" >> FILES/etc/opkg/distfeeds.conf
+          echo "src/gz immortalwrt_kmods ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/kmods/${{ steps.version.outputs.KMODS_SUBDIR }}" >> FILES/etc/opkg/distfeeds.conf
+          echo "src/gz immortalwrt_luci ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/luci" >> FILES/etc/opkg/distfeeds.conf
+          echo "src/gz immortalwrt_packages ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/packages" >> FILES/etc/opkg/distfeeds.conf
+          echo "src/gz immortalwrt_routing ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/routing" >> FILES/etc/opkg/distfeeds.conf
+          echo "src/gz immortalwrt_telephony ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/telephony" >> FILES/etc/opkg/distfeeds.conf
           
-          # 配置固件内 opkg 源
-          cat > FILES/etc/opkg/distfeeds.conf << EOF
-src/gz immortalwrt_core ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/packages
-src/gz immortalwrt_base ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/base
-src/gz immortalwrt_kmods ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/kmods/${{ steps.version.outputs.KMODS_SUBDIR }}
-src/gz immortalwrt_luci ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/luci
-src/gz immortalwrt_packages ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/packages
-src/gz immortalwrt_routing ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/routing
-src/gz immortalwrt_telephony ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/telephony
-EOF
-          
-          # 下载 AdGuardHome 核心
-          echo "下载 AdGuardHome 核心 (${{ steps.version.outputs.ADGCORETAG }})..."
-          wget -q "${{ env.GHPROXY }}/https://github.com/AdguardTeam/AdGuardHome/releases/download/${{ steps.version.outputs.ADGCORETAG }}/AdGuardHome_linux_amd64.tar.gz" -O adg.tar.gz
-          tar -xzf adg.tar.gz
+          wget -q "${{ env.GHPROXY }}/https://github.com/AdguardTeam/AdGuardHome/releases/download/${{ steps.version.outputs.ADG_CORE_TAG }}/AdGuardHome_linux_amd64.tar.gz"
+          tar -xzf AdGuardHome_linux_amd64.tar.gz
           mv AdGuardHome/AdGuardHome FILES/usr/bin/AdGuardHome/
           chmod +x FILES/usr/bin/AdGuardHome/AdGuardHome
-          rm -rf AdGuardHome adg.tar.gz
+          rm -rf AdGuardHome AdGuardHome_linux_amd64.tar.gz
           
-          # 下载 Mihomo 内核
-          echo "下载 Mihomo 内核 (${{ steps.version.outputs.MIHOMOTAG }})..."
-          wget -q "${{ env.GHPROXY }}/https://github.com/MetaCubeX/mihomo/releases/download/${{ steps.version.outputs.MIHOMOTAG }}/mihomo-linux-amd64-${{ steps.version.outputs.MIHOMOTAG }}.gz" -O mihomo.gz
-          gunzip -c mihomo.gz > FILES/etc/openclash/core/clash_meta
+          wget -q "${{ env.GHPROXY }}/https://github.com/MetaCubeX/mihomo/releases/download/${{ steps.version.outputs.MIHOMO_TAG }}/mihomo-linux-amd64-${{ steps.version.outputs.MIHOMO_TAG }}.gz"
+          gunzip -c mihomo-*.gz > FILES/etc/openclash/core/clash_meta
           chmod +x FILES/etc/openclash/core/clash_meta
-          rm -f mihomo.gz
-          
-          # 验证 FILES 内容
-          echo ""
-          echo "FILES 目录内容:"
-          find FILES -type f
+          rm -f mihomo-*.gz
       
-      - name: 🔨 构建固件
+      - name: Build firmware
         run: |
           cd ${{ env.IMAGEBUILDER_DIR }}
-          
-          # 定义包列表
           PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
-          
-          # 清理输出目录
-          rm -rf output bin/targets
-          mkdir -p output
-          
-          # 执行构建
-          echo "开始构建..."
-          make image \
-            PROFILE=generic \
-            PACKAGES="$PACKAGES" \
-            FILES="FILES" \
-            2>&1 | tee build.log
-          
-          # 复制输出文件
-          if [ -d "bin/targets/x86/64" ]; then
-            cp -r bin/targets/x86/64/* output/
-            echo "输出文件已复制到 output/"
-          fi
-          
-          # 显示结果
-          echo ""
-          echo "构建完成的文件:"
-          ls -lh output/*.img.gz 2>/dev/null || echo "未找到 img.gz 文件"
-          
-          # 复制固件到工作区根目录用于上传
+          rm -rf output bin/targets && mkdir -p output
+          make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" 2>&1 | tee build.log
+          [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
           mkdir -p ${{ github.workspace }}/firmware
           cp output/*.img.gz ${{ github.workspace }}/firmware/ 2>/dev/null || true
           cp output/*.manifest ${{ github.workspace }}/firmware/ 2>/dev/null || true
           cp output/*.buildinfo ${{ github.workspace }}/firmware/ 2>/dev/null || true
       
-      - name: 📊 生成构建信息
+      - name: Generate build info
         run: |
           cd ${{ github.workspace }}/firmware
-          
-          # 创建版本信息文件
-          cat > build-info.txt << EOF
-ImmortalWrt 固件构建信息
-========================
-构建时间：$(date '+%Y-%m-%d %H:%M:%S')
-ImmortalWrt 版本：${{ steps.version.outputs.VERSION }}
-内核版本：${{ steps.version.outputs.KMODS_SUBDIR }}
-
-第三方软件版本:
-- EasyTier: ${{ steps.version.outputs.EASYTIERTAG }}
-- Lucky: ${{ steps.version.outputs.LUCKYTAG }}
-- AdGuardHome LuCI: ${{ steps.version.outputs.ADTAG }}
-- AdGuardHome 核心：${{ steps.version.outputs.ADGCORETAG }}
-- Mihomo: ${{ steps.version.outputs.MIHOMOTAG }}
-
-预装软件包:
-kmod-tun
-easytier
-miniupnpd-nftables
-lucky
-luci-app-adguardhome
-luci-app-openclash
-luci-app-argon-config
-luci-app-autoreboot
-luci-app-msd_lite
-luci-app-wol
-luci-app-easytier
-luci-app-zerotier
-luci-app-diskman
-luci-app-lucky
-luci-i18n-zerotier-zh-cn
-luci-i18n-autoreboot-zh-cn
-luci-i18n-wol-zh-cn
-luci-i18n-msd_lite-zh-cn
-luci-i18n-upnp-zh-cn
-luci-i18n-diskman-zh-cn
-luci-i18n-argon-config-zh-cn
-luci-i18n-firewall-zh-cn
-luci-app-upnp
-luci-i18n-package-manager-zh-cn
-luci-i18n-lucky-zh-cn
-luci-i18n-adguardhome-zh-cn
-
-文件列表:
-$(ls -lh)
-EOF
-          
-          cat build-info.txt
+          echo "ImmortalWrt Firmware Build Info" > build-info.txt
+          echo "================================" >> build-info.txt
+          echo "Build Time: $(date '+%Y-%m-%d %H:%M:%S')" >> build-info.txt
+          echo "Version: ${{ steps.version.outputs.VERSION }}" >> build-info.txt
+          echo "KMods: ${{ steps.version.outputs.KMODS_SUBDIR }}" >> build-info.txt
+          echo "" >> build-info.txt
+          echo "Third-party Versions:" >> build-info.txt
+          echo "- EasyTier: ${{ steps.version.outputs.EASYTIER_TAG }}" >> build-info.txt
+          echo "- Lucky: ${{ steps.version.outputs.LUCKY_TAG }}" >> build-info.txt
+          echo "- AdGuardHome LuCI: ${{ steps.version.outputs.ADG_TAG }}" >> build-info.txt
+          echo "- AdGuardHome Core: ${{ steps.version.outputs.ADG_CORE_TAG }}" >> build-info.txt
+          echo "- Mihomo: ${{ steps.version.outputs.MIHOMO_TAG }}" >> build-info.txt
       
-      - name: ⬆️ 上传固件到 GitHub Release
+      - name: Upload to Release
         if: github.event.inputs.upload_release == 'true' || github.event_name == 'schedule'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: immortalwrt-${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
-          name: "🚀 ImmortalWrt ${{ steps.version.outputs.VERSION }} - 构建 #${{ github.run_number }}"
+          name: "ImmortalWrt ${{ steps.version.outputs.VERSION }} - Build #${{ github.run_number }}"
           body_path: ${{ github.workspace }}/firmware/build-info.txt
           files: |
             ${{ github.workspace }}/firmware/*.img.gz
@@ -331,21 +172,9 @@ EOF
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: 📦 上传构建产物
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: immortalwrt-firmware-${{ steps.version.outputs.VERSION }}
           path: ${{ github.workspace }}/firmware/
           retention-days: 30
-      
-      - name: ✅ 构建完成
-        run: |
-          echo "=========================================="
-          echo "🎉 构建完成!"
-          echo "=========================================="
-          echo "ImmortalWrt 版本：${{ steps.version.outputs.VERSION }}"
-          echo "构建编号：${{ github.run_number }}"
-          echo "上传 Release: ${{ github.event.inputs.upload_release == 'true' || github.event_name == 'schedule' && '是' || '否' }}"
-          echo ""
-          echo "固件文件:"
-          ls -lh ${{ github.workspace }}/firmware/*.img.gz 2>/dev/null || echo "未找到固件文件"
