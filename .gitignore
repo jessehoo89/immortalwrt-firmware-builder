@@ -1,0 +1,31 @@
+# 构建产物
+output/
+bin/
+FILES/
+packages/*.zip
+packages/*.gz
+packages/*.tar.gz
+*.img.gz
+*.manifest
+*.buildinfo
+build.log
+imagebuilder.tar.zst
+adg.tar.gz
+mihomo.gz
+
+# 临时文件
+*.tmp
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 固件文件（本地测试用）
+firmware/
