@@ -1,8 +1,6 @@
 #!/bin/bash
 # inject-autoexpand.sh - 为 ext4 固件注入自动扩容脚本
 
-set -e
-
 IMG="${1:-}"
 [ -z "$IMG" ] && { echo "用法: $0 <ext4镜像文件>"; exit 1; }
 
@@ -22,13 +20,19 @@ fi
 
 echo "处理: $IMG"
 
-# 解压（如果是.gz）- 使用临时文件避免修改原文件
+# 解压（如果是.gz）- 忽略 trailing garbage 警告
 WORK_IMG="$IMG"
 TMP_CREATED=false
 if [[ "$IMG" == *.gz ]]; then
     echo "解压..."
     TMP_IMG="${IMG%.gz}.tmp"
-    gunzip -c "$IMG" > "$TMP_IMG"
+    # 使用 gunzip -c 并忽略 stderr 的警告，只检查文件是否生成
+    gunzip -c "$IMG" > "$TMP_IMG" 2>/dev/null || true
+    if [ ! -s "$TMP_IMG" ]; then
+        echo "解压失败: $IMG"
+        rm -f "$TMP_IMG"
+        exit 1
+    fi
     WORK_IMG="$TMP_IMG"
     TMP_CREATED=true
 fi
