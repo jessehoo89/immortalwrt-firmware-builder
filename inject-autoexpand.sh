@@ -22,12 +22,11 @@ fi
 
 echo "处理: $IMG"
 
-# 解压（如果是.gz）
+# 解压（如果是.gz）- 使用临时文件避免修改原文件
 WORK_IMG="$IMG"
 TMP_CREATED=false
 if [[ "$IMG" == *.gz ]]; then
     echo "解压..."
-    # 创建临时文件而不是直接解压原文件
     TMP_IMG="${IMG%.gz}.tmp"
     gunzip -c "$IMG" > "$TMP_IMG"
     WORK_IMG="$TMP_IMG"
@@ -36,10 +35,9 @@ fi
 
 # 查找 rootfs 分区偏移
 echo "分析分区..."
-PART_INFO=$(fdisk -l "$WORK_IMG" 2>/dev/null | grep "Linux" | grep -v "Linux swap" | tail -1)
+PART_INFO=$(fdisk -l "$WORK_IMG" 2>/dev/null | grep "Linux" | grep -v "swap" | tail -1)
 if [ -z "$PART_INFO" ]; then
     echo "警告: 无法识别分区信息，跳过: $IMG"
-    # 清理临时文件
     [ "$TMP_CREATED" = true ] && rm -f "$TMP_IMG"
     exit 0
 fi
@@ -50,11 +48,10 @@ OFFSET=$((START_SECTOR * SECTOR_SIZE))
 
 echo "rootfs 偏移: $OFFSET 字节 (扇区: $START_SECTOR)"
 
-# 挂载
+# 挂载（需要 sudo）
 MNT_DIR=$(mktemp -d)
-if ! mount -o loop,offset=$OFFSET "$WORK_IMG" "$MNT_DIR" 2>/dev/null; then
+if ! sudo mount -o loop,offset=$OFFSET "$WORK_IMG" "$MNT_DIR" 2>/dev/null; then
     echo "挂载失败: $IMG"
-    # 清理
     [ "$TMP_CREATED" = true ] && rm -f "$TMP_IMG"
     rmdir "$MNT_DIR" 2>/dev/null
     exit 1
@@ -63,7 +60,7 @@ fi
 # 检查是否已经注入过
 if [ -f "$MNT_DIR/etc/uci-defaults/99-auto-expand" ]; then
     echo "已存在自动扩容脚本，跳过: $IMG"
-    umount "$MNT_DIR"
+    sudo umount "$MNT_DIR"
     rmdir "$MNT_DIR"
     [ "$TMP_CREATED" = true ] && rm -f "$TMP_IMG"
     exit 0
@@ -71,8 +68,8 @@ fi
 
 # 注入自动扩容脚本
 echo "注入自动扩容脚本..."
-mkdir -p "$MNT_DIR/etc/uci-defaults/"
-cat > "$MNT_DIR/etc/uci-defaults/99-auto-expand" << 'INJECT_EOF'
+sudo mkdir -p "$MNT_DIR/etc/uci-defaults/"
+sudo tee "$MNT_DIR/etc/uci-defaults/99-auto-expand" > /dev/null << 'INJECT_EOF'
 #!/bin/sh
 # 自动扩容脚本 - 首次启动时执行
 
@@ -106,10 +103,10 @@ rm -f "$0"
 exit 0
 INJECT_EOF
 
-chmod +x "$MNT_DIR/etc/uci-defaults/99-auto-expand"
+sudo chmod +x "$MNT_DIR/etc/uci-defaults/99-auto-expand"
 
 # 卸载
-umount "$MNT_DIR"
+sudo umount "$MNT_DIR"
 rmdir "$MNT_DIR"
 
 # 重新压缩
