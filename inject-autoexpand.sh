@@ -1,6 +1,5 @@
 #!/bin/bash
 # inject-autoexpand.sh - 为 ext4 固件注入自动扩容脚本
-# 使用 debugfs 方法，无需 mount 权限
 
 IMG="${1:-}"
 [ -z "$IMG" ] && { echo "用法: $0 <ext4镜像文件>"; exit 1; }
@@ -48,25 +47,32 @@ fi
 
 START_SECTOR=$(echo "$PART_INFO" | awk '{print $2}')
 SECTOR_SIZE=512
-PART_SIZE=$(echo "$PART_INFO" | awk '{print $4}')
+OFFSET=$((START_SECTOR * SECTOR_SIZE))
 
-echo "rootfs 分区: 扇区 $START_SECTOR, 大小 $PART_SIZE"
+echo "rootfs 偏移: $OFFSET 字节 (扇区: $START_SECTOR)"
 
-# 提取 rootfs 分区为独立镜像
-PART_IMG="${WORK_IMG}.part"
-dd if="$WORK_IMG" of="$PART_IMG" bs=512 skip=$START_SECTOR count=$PART_SIZE 2>/dev/null
+# 挂载
+MNT_DIR=$(mktemp -d)
+if ! sudo mount -o loop,offset=$OFFSET "$WORK_IMG" "$MNT_DIR" 2>/dev/null; then
+    echo "挂载失败: $IMG"
+    [ "$TMP_CREATED" = true ] && rm -f "$TMP_IMG"
+    rmdir "$MNT_DIR" 2>/dev/null
+    exit 1
+fi
 
 # 检查是否已经注入过
-if debugfs "$PART_IMG" -R "ls /etc/uci-defaults" 2>/dev/null | grep -q "99-auto-expand"; then
+if [ -f "$MNT_DIR/etc/uci-defaults/99-auto-expand" ]; then
     echo "已存在自动扩容脚本，跳过: $IMG"
-    rm -f "$PART_IMG"
+    sudo umount "$MNT_DIR"
+    rmdir "$MNT_DIR"
     [ "$TMP_CREATED" = true ] && rm -f "$TMP_IMG"
     exit 0
 fi
 
-# 创建自动扩容脚本
-SCRIPT_FILE="/tmp/99-auto-expand.$$"
-cat > "$SCRIPT_FILE" << 'INJECT_EOF'
+# 注入自动扩容脚本
+echo "注入自动扩容脚本..."
+sudo mkdir -p "$MNT_DIR/etc/uci-defaults/"
+sudo tee "$MNT_DIR/etc/uci-defaults/99-auto-expand" > /dev/null << 'INJECT_EOF'
 #!/bin/sh
 # 自动扩容脚本 - 首次启动时执行
 
@@ -100,19 +106,11 @@ rm -f "$0"
 exit 0
 INJECT_EOF
 
-chmod +x "$SCRIPT_FILE"
+sudo chmod +x "$MNT_DIR/etc/uci-defaults/99-auto-expand"
 
-# 使用 debugfs 注入脚本
-echo "注入自动扩容脚本..."
-debugfs -w "$PART_IMG" -R "write $SCRIPT_FILE /etc/uci-defaults/99-auto-expand" >/dev/null 2>&1
-debugfs -w "$PART_IMG" -R "set_inode_field /etc/uci-defaults/99-auto-expand mode 0100755" >/dev/null 2>&1
-
-# 将修改后的分区写回原镜像
-echo "更新镜像..."
-dd if="$PART_IMG" of="$WORK_IMG" bs=512 seek=$START_SECTOR conv=notrunc 2>/dev/null
-
-# 清理临时文件
-rm -f "$SCRIPT_FILE" "$PART_IMG"
+# 卸载
+sudo umount "$MNT_DIR"
+rmdir "$MNT_DIR"
 
 # 重新压缩
 if [[ "$IMG" == *.gz ]]; then
