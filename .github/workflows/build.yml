@@ -158,6 +158,33 @@ jobs:
           echo "Firmware files:"
           ls -lh ${{ github.workspace }}/firmware/
       
+      - name: Inject auto-expand script to ext4 firmware
+        run: |
+          cd ${{ github.workspace }}/firmware
+          echo "查找 ext4 固件并注入自动扩容脚本..."
+          
+          # 复制注入脚本
+          cp ${{ github.workspace }}/inject-autoexpand.sh /tmp/
+          chmod +x /tmp/inject-autoexpand.sh
+          
+          # 处理所有 ext4 固件
+          COUNT=0
+          for img in *ext4*.img.gz; do
+            if [ -f "$img" ]; then
+              echo "处理: $img"
+              /tmp/inject-autoexpand.sh "$img" || echo "警告: 处理失败: $img"
+              COUNT=$((COUNT + 1))
+            fi
+          done
+          
+          if [ $COUNT -eq 0 ]; then
+            echo "未找到 ext4 固件"
+          else
+            echo "✅ 已处理 $COUNT 个 ext4 固件"
+            echo "处理后的文件:"
+            ls -lh *ext4*.img.gz 2>/dev/null || true
+          fi
+      
       - name: Generate build info
         run: |
           cd ${{ github.workspace }}/firmware
