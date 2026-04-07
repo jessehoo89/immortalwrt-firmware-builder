@@ -60,10 +60,10 @@
 
 ```bash
 # 拉取最新镜像
-docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/immortalwrt_multiple_ethports:latest
+docker pull jessekool/immortalwrt_multiple_ethports:latest
 
 # 拉取指定构建版本
-docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/immortalwrt_multiple_ethports:<构建编号>
+docker pull jessekool/immortalwrt_multiple_ethports:<构建编号>
 ```
 
 **Docker 镜像使用说明：**
