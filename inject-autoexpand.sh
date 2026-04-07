@@ -1,18 +1,79 @@
 #!/bin/bash
-# inject-autoexpand.sh - 为 ext4 固件注入自动扩容脚本
+# inject-autoexpand.sh - 为 ext4 固件注入自动扩容脚本，为 rootfs 注入 DHCP 关闭脚本
 
 IMG="${1:-}"
-[ -z "$IMG" ] && { echo "用法: $0 <ext4镜像文件>"; exit 1; }
+[ -z "$IMG" ] && { echo "用法: $0 <镜像文件>"; exit 1; }
 
 # 检查文件是否存在
 [ ! -f "$IMG" ] && { echo "错误: 文件不存在: $IMG"; exit 1; }
 
-# 检查是否为 ext4 固件（跳过 rootfs 文件，因为没有分区表）
-if [[ "$IMG" == *rootfs* ]]; then
-    echo "跳过: rootfs 文件（无分区表）: $IMG"
+# ========================================
+# 处理 rootfs.tar.gz - 注入关闭 LAN DHCP
+# ========================================
+if [[ "$IMG" == *rootfs*.tar.gz ]]; then
+    echo "处理 rootfs.tar.gz: $IMG"
+    
+    ADD_DIR=$(mktemp -d)
+    mkdir -p "$ADD_DIR/etc/uci-defaults"
+    
+    cat > "$ADD_DIR/etc/uci-defaults/99-disable-lan-dhcp" << 'EOF'
+#!/bin/sh
+# 关闭 LAN 口 DHCP 服务（适用于 Docker 环境）
+uci set dhcp.lan.ignore='1'
+uci commit dhcp
+/etc/init.d/dnsmasq restart 2>/dev/null || true
+rm -f "$0"
+exit 0
+EOF
+    chmod +x "$ADD_DIR/etc/uci-defaults/99-disable-lan-dhcp"
+    
+    # 检查是否已存在
+    if tar -tzf "$IMG" 2>/dev/null | grep -q "etc/uci-defaults/99-disable-lan-dhcp"; then
+        echo "  已存在 DHCP 关闭脚本，跳过"
+        rm -rf "$ADD_DIR"
+        exit 0
+    fi
+    
+    # 流式追加（先删除旧的，再添加新的）
+    cp "$IMG" "${IMG}.bak"
+    
+    # 使用临时文件处理 tar 操作
+    TMP_UNCOMPRESSED=$(mktemp)
+    gunzip -c "$IMG" > "$TMP_UNCOMPRESSED"
+    
+    # 删除可能存在的旧文件，然后添加新文件
+    tar --delete -f "$TMP_UNCOMPRESSED" etc/uci-defaults/99-disable-lan-dhcp 2>/dev/null || true
+    tar -C "$ADD_DIR" -rf "$TMP_UNCOMPRESSED" etc
+    
+    # 压缩
+    gzip -9c "$TMP_UNCOMPRESSED" > "${IMG}.tmp"
+    rm -f "$TMP_UNCOMPRESSED"
+    
+    if [ -s "${IMG}.tmp" ]; then
+        mv "${IMG}.tmp" "$IMG"
+        rm -rf "$ADD_DIR" "${IMG}.bak"
+        echo "✅ 完成: 已注入 DHCP 关闭脚本"
+    else
+        echo "❌ 失败，恢复原文件"
+        mv "${IMG}.bak" "$IMG"
+        rm -rf "$ADD_DIR" "${IMG}.tmp"
+        exit 1
+    fi
+    
     exit 0
 fi
 
+# ========================================
+# 跳过其他 rootfs 文件（非 tar.gz 格式）
+# ========================================
+if [[ "$IMG" == *rootfs* ]]; then
+    echo "跳过: rootfs 文件（非 tar.gz 格式）: $IMG"
+    exit 0
+fi
+
+# ========================================
+# 处理 ext4 固件 - 注入自动扩容脚本
+# ========================================
 if [[ "$IMG" != *ext4* ]]; then
     echo "跳过: 非 ext4 固件: $IMG"
     exit 0
