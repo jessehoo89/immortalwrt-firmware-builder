@@ -158,16 +158,27 @@ jobs:
           echo "Firmware files:"
           ls -lh ${{ github.workspace }}/firmware/
       
-      - name: Inject auto-expand script to ext4 firmware
+      - name: Inject scripts to firmware
         run: |
           cd ${{ github.workspace }}/firmware
-          echo "查找 ext4 固件并注入自动扩容脚本..."
+          echo "注入脚本到固件..."
           
           # 复制注入脚本
           cp ${{ github.workspace }}/inject-autoexpand.sh /tmp/
-          chmod +x /tmp/inject-autoexpand.sh
+          cp ${{ github.workspace }}/inject-dhcp.sh /tmp/
+          chmod +x /tmp/inject-autoexpand.sh /tmp/inject-dhcp.sh
           
-          # 处理所有 ext4 固件
+          # 处理 rootfs.tar.gz - 注入 DHCP 关闭脚本
+          echo "处理 rootfs.tar.gz..."
+          for img in *rootfs*.tar.gz; do
+            if [ -f "$img" ]; then
+              echo "处理: $img"
+              /tmp/inject-dhcp.sh "$img" || echo "警告: 处理失败: $img"
+            fi
+          done
+          
+          # 处理 ext4 固件 - 注入自动扩容脚本
+          echo "处理 ext4 固件..."
           COUNT=0
           for img in *ext4*.img.gz; do
             if [ -f "$img" ]; then
@@ -181,9 +192,10 @@ jobs:
             echo "未找到 ext4 固件"
           else
             echo "✅ 已处理 $COUNT 个 ext4 固件"
-            echo "处理后的文件:"
-            ls -lh *ext4*.img.gz 2>/dev/null || true
           fi
+          
+          echo "处理后的文件:"
+          ls -lh *rootfs*.tar.gz *ext4*.img.gz 2>/dev/null || true
       
       - name: Generate build info
         run: |

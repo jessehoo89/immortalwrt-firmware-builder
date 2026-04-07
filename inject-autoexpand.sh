@@ -1,79 +1,19 @@
 #!/bin/bash
-# inject-autoexpand.sh - 为 ext4 固件注入自动扩容脚本，为 rootfs 注入 DHCP 关闭脚本
+# inject-autoexpand.sh - 为 ext4 固件注入自动扩容脚本
 
 IMG="${1:-}"
-[ -z "$IMG" ] && { echo "用法: $0 <镜像文件>"; exit 1; }
+[ -z "$IMG" ] && { echo "用法: $0 <ext4镜像文件>"; exit 1; }
 
 # 检查文件是否存在
 [ ! -f "$IMG" ] && { echo "错误: 文件不存在: $IMG"; exit 1; }
 
-# ========================================
-# 处理 rootfs.tar.gz - 注入关闭 LAN DHCP
-# ========================================
-if [[ "$IMG" == *rootfs*.tar.gz ]]; then
-    echo "处理 rootfs.tar.gz: $IMG"
-    
-    ADD_DIR=$(mktemp -d)
-    mkdir -p "$ADD_DIR/etc/uci-defaults"
-    
-    cat > "$ADD_DIR/etc/uci-defaults/99-disable-lan-dhcp" << 'EOF'
-#!/bin/sh
-# 关闭 LAN 口 DHCP 服务（适用于 Docker 环境）
-uci set dhcp.lan.ignore='1'
-uci commit dhcp
-/etc/init.d/dnsmasq restart 2>/dev/null || true
-rm -f "$0"
-exit 0
-EOF
-    chmod +x "$ADD_DIR/etc/uci-defaults/99-disable-lan-dhcp"
-    
-    # 检查是否已存在
-    if tar -tzf "$IMG" 2>/dev/null | grep -q "etc/uci-defaults/99-disable-lan-dhcp"; then
-        echo "  已存在 DHCP 关闭脚本，跳过"
-        rm -rf "$ADD_DIR"
-        exit 0
-    fi
-    
-    # 流式追加（先删除旧的，再添加新的）
-    cp "$IMG" "${IMG}.bak"
-    
-    # 使用临时文件处理 tar 操作
-    TMP_UNCOMPRESSED=$(mktemp)
-    gunzip -c "$IMG" > "$TMP_UNCOMPRESSED"
-    
-    # 删除可能存在的旧文件，然后添加新文件
-    tar --delete -f "$TMP_UNCOMPRESSED" etc/uci-defaults/99-disable-lan-dhcp 2>/dev/null || true
-    tar -C "$ADD_DIR" -rf "$TMP_UNCOMPRESSED" etc
-    
-    # 压缩
-    gzip -9c "$TMP_UNCOMPRESSED" > "${IMG}.tmp"
-    rm -f "$TMP_UNCOMPRESSED"
-    
-    if [ -s "${IMG}.tmp" ]; then
-        mv "${IMG}.tmp" "$IMG"
-        rm -rf "$ADD_DIR" "${IMG}.bak"
-        echo "✅ 完成: 已注入 DHCP 关闭脚本"
-    else
-        echo "❌ 失败，恢复原文件"
-        mv "${IMG}.bak" "$IMG"
-        rm -rf "$ADD_DIR" "${IMG}.tmp"
-        exit 1
-    fi
-    
-    exit 0
-fi
-
-# ========================================
-# 跳过其他 rootfs 文件（非 tar.gz 格式）
-# ========================================
+# 跳过 rootfs 文件（由 inject-dhcp.sh 处理）
 if [[ "$IMG" == *rootfs* ]]; then
-    echo "跳过: rootfs 文件（非 tar.gz 格式）: $IMG"
+    echo "跳过: rootfs 文件（由 inject-dhcp.sh 处理）: $IMG"
     exit 0
 fi
 
-# ========================================
-# 处理 ext4 固件 - 注入自动扩容脚本
-# ========================================
+# 跳过非 ext4 固件
 if [[ "$IMG" != *ext4* ]]; then
     echo "跳过: 非 ext4 固件: $IMG"
     exit 0
@@ -147,7 +87,7 @@ ROOT_SIZE=$(df / | tail -1 | awk '{print $2}')
 case "$ROOT_DEV" in
     /dev/mmcblk*p*|/dev/nvme*n*p*)
         DISK=$(echo "$ROOT_DEV" | sed 's/p[0-9]*$//')
-        PART_NUM=$(echo "$ROOT_DEV" | sed 's/.*p//' | sed 's/[^0-9]//')
+        PART_NUM=$(echo "$ROOT_DEV" | sed 's/p[0-9]*$//' | sed 's/.*[a-z]//')
         ;;
     /dev/sd*|/dev/vd*|/dev/xvd*)
         DISK=$(echo "$ROOT_DEV" | sed 's/[0-9]*$//')
@@ -173,12 +113,11 @@ sudo chmod +x "$MNT_DIR/etc/uci-defaults/99-auto-expand"
 sudo umount "$MNT_DIR"
 rmdir "$MNT_DIR"
 
-# 重新压缩
-if [[ "$IMG" == *.gz ]]; then
-    echo "压缩: $IMG"
-    rm -f "$IMG"
-    gzip -9c "$WORK_IMG" > "$IMG"
-    rm -f "$WORK_IMG"
+# 重新压缩（如果是.gz）
+if [ "$TMP_CREATED" = true ]; then
+    echo "重新压缩..."
+    gzip -9c "$TMP_IMG" > "$IMG"
+    rm -f "$TMP_IMG"
 fi
 
 echo "✅ 完成: $IMG"
