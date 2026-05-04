@@ -19,6 +19,9 @@ log_warn_batch()  { echo "[WARN] $1" >&2; }
 log_error_batch() { echo "[ERROR] $1" >&2; }
 log_step_batch()  { echo "[STEP] $1" >&2; }
 
+# ==================== 脚本目录（注入脚本时用） ====================
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # ==================== 辅助函数 ====================
 get_latest_tag() {
     local repo=$1
@@ -213,7 +216,7 @@ cd "$IMAGEBUILDER_DIR"
 PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
-make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log
+make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log >&2
 
 # 复制构建产物
 [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
@@ -230,9 +233,8 @@ cd "$OUTPUT_DIR"
 # 注入 DHCP 关闭脚本
 for img in *rootfs*.tar.gz; do
     if [ -f "$img" ]; then
-        SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-        if [ -f "$SCRIPTS_DIR/inject-dhcp.sh" ]; then
-            bash "$SCRIPTS_DIR/inject-dhcp.sh" "$img" || echo "警告: DHCP 注入失败: $img" >&2
+        if [ -f "$SCRIPT_DIR/inject-dhcp.sh" ]; then
+            bash "$SCRIPT_DIR/inject-dhcp.sh" "$img" || echo "警告: DHCP 注入失败: $img" >&2
         else
             log_warn_batch "未找到 inject-dhcp.sh，跳过 DHCP 注入"
             $BATCH || log_warn "未找到 inject-dhcp.sh，跳过 DHCP 注入"
@@ -244,9 +246,8 @@ done
 COUNT=0
 for img in *ext4*.img.gz; do
     if [ -f "$img" ]; then
-        SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-        if [ -f "$SCRIPTS_DIR/inject-autoexpand.sh" ]; then
-            bash "$SCRIPTS_DIR/inject-autoexpand.sh" "$img" || echo "警告: 自动扩容注入失败: $img" >&2
+        if [ -f "$SCRIPT_DIR/inject-autoexpand.sh" ]; then
+            bash "$SCRIPT_DIR/inject-autoexpand.sh" "$img" || echo "警告: 自动扩容注入失败: $img" >&2
             COUNT=$((COUNT + 1))
         else
             log_warn_batch "未找到 inject-autoexpand.sh，跳过自动扩容注入"
