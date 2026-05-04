@@ -31,203 +31,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget curl unzip zstd gzip tar make build-essential libssl-dev zlib1g-dev gawk git ccache libncurses5-dev libncursesw5-dev rsync python3 python3-pip python3-setuptools python3-yaml swig libpython3-dev qemu-utils genisoimage
       
-      - name: Create working directory
-        run: |
-          mkdir -p ${{ github.workspace }}/immortalwrt
-          echo "WORK_DIR=${{ github.workspace }}/immortalwrt" >> $GITHUB_ENV
-      
-      - name: Get version info
-        id: version
-        run: |
-          cd ${{ env.WORK_DIR }}
-          
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION=$(curl -s "${{ env.MIRROR }}/releases/" | grep -oE 'href="[0-9]+\.[0-9]+\.[0-9]+/"' | sed 's/href="//; s|"||' | sort -V | tail -1)
-            [ -z "$VERSION" ] && VERSION="24.10.6"
-          fi
-          
-          KMODS_SUBDIR=$(curl -s "${{ env.MIRROR }}/releases/${VERSION}/targets/x86/64/kmods/" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-[0-9a-f-]+' | head -1)
-          [ -z "$KMODS_SUBDIR" ] && KMODS_SUBDIR="6.6.122-1-e7e50fbc0aafa7443418a79928da2602"
-          
-          EASYTIER_TAG=$(curl -s "https://api.github.com/repos/EasyTier/luci-app-easytier/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-          LUCKY_TAG=$(curl -s "https://api.github.com/repos/gdy666/luci-app-lucky/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-          ADG_TAG=$(curl -s "https://api.github.com/repos/stevenjoezhang/luci-app-adguardhome/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-          ADG_CORE_TAG=$(curl -s "https://api.github.com/repos/AdguardTeam/AdGuardHome/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-          MIHOMO_TAG=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep '"tag_name":' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-          
-          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
-          echo "KMODS_SUBDIR=${KMODS_SUBDIR}" >> $GITHUB_OUTPUT
-          echo "EASYTIER_TAG=${EASYTIER_TAG:-v2.5.0}" >> $GITHUB_OUTPUT
-          echo "LUCKY_TAG=${LUCKY_TAG:-v2.19.5}" >> $GITHUB_OUTPUT
-          echo "ADG_TAG=${ADG_TAG:-v1.19}" >> $GITHUB_OUTPUT
-          echo "ADG_CORE_TAG=${ADG_CORE_TAG:-v0.107.55}" >> $GITHUB_OUTPUT
-          echo "MIHOMO_TAG=${MIHOMO_TAG:-v1.19.0}" >> $GITHUB_OUTPUT
-          echo "GHPROXY=" >> $GITHUB_ENV
-          echo "BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')" >> $GITHUB_ENV
-      
-      - name: Download ImageBuilder
-        run: |
-          cd ${{ env.WORK_DIR }}
-          echo "Downloading ImageBuilder ${{ steps.version.outputs.VERSION }}..."
-          wget -v "${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/immortalwrt-imagebuilder-${{ steps.version.outputs.VERSION }}-x86-64.Linux-x86_64.tar.zst" -O imagebuilder.tar.zst
-          ls -lh imagebuilder.tar.zst
-          file imagebuilder.tar.zst
-          tar -I zstd -xvf imagebuilder.tar.zst
-          rm -f imagebuilder.tar.zst
-          cd immortalwrt-imagebuilder-*
-          echo "IMAGEBUILDER_DIR=$(pwd)" >> $GITHUB_ENV
-          ls -la
-      
-      - name: Configure repositories
-        run: |
-          cd ${{ env.IMAGEBUILDER_DIR }}
-          echo "src/gz immortalwrt_core ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/packages" > repositories.conf
-          echo "src/gz immortalwrt_base ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/base" >> repositories.conf
-          echo "src/gz immortalwrt_kmods ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/kmods/${{ steps.version.outputs.KMODS_SUBDIR }}" >> repositories.conf
-          echo "src/gz immortalwrt_luci ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/luci" >> repositories.conf
-          echo "src/gz immortalwrt_packages ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/packages" >> repositories.conf
-          echo "src/gz immortalwrt_routing ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/routing" >> repositories.conf
-          echo "src/gz immortalwrt_telephony ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/telephony" >> repositories.conf
-          echo "src imagebuilder file:packages" >> repositories.conf
-      
-      - name: Download third-party packages
-        run: |
-          cd ${{ env.IMAGEBUILDER_DIR }}/packages
-          
-          GHPREFIX=""
-          
-          wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${{ steps.version.outputs.EASYTIER_TAG }}/EasyTier-${{ steps.version.outputs.EASYTIER_TAG }}-x86_64-22.03.7.zip"
-          unzip -q EasyTier-*.zip && rm -f EasyTier-*.zip
-          
-          wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-app-lucky_2.2.2-r1_all.ipk"
-          wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/luci-i18n-lucky-zh-cn_25.051.13443.e78d498_all.ipk"
-          wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${{ steps.version.outputs.LUCKY_TAG }}/lucky_2.19.5_Openwrt_x86_64.ipk"
-          
-          wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-app-adguardhome_1.19_all.ipk"
-          wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${{ steps.version.outputs.ADG_TAG }}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
-          
-          ls -lh
-      
-      - name: Prepare FILES directory
-        run: |
-          cd ${{ env.IMAGEBUILDER_DIR }}
-          mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg
-          
-          echo "src/gz immortalwrt_core ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/packages" > FILES/etc/opkg/distfeeds.conf
-          echo "src/gz immortalwrt_base ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/base" >> FILES/etc/opkg/distfeeds.conf
-          echo "src/gz immortalwrt_kmods ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/targets/x86/64/kmods/${{ steps.version.outputs.KMODS_SUBDIR }}" >> FILES/etc/opkg/distfeeds.conf
-          echo "src/gz immortalwrt_luci ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/luci" >> FILES/etc/opkg/distfeeds.conf
-          echo "src/gz immortalwrt_packages ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/packages" >> FILES/etc/opkg/distfeeds.conf
-          echo "src/gz immortalwrt_routing ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/routing" >> FILES/etc/opkg/distfeeds.conf
-          echo "src/gz immortalwrt_telephony ${{ env.MIRROR }}/releases/${{ steps.version.outputs.VERSION }}/packages/x86_64/telephony" >> FILES/etc/opkg/distfeeds.conf
-          
-          wget -q "${GHPREFIX}https://github.com/AdguardTeam/AdGuardHome/releases/download/${{ steps.version.outputs.ADG_CORE_TAG }}/AdGuardHome_linux_amd64.tar.gz"
-          tar -xzf AdGuardHome_linux_amd64.tar.gz
-          mv AdGuardHome/AdGuardHome FILES/usr/bin/AdGuardHome/
-          chmod +x FILES/usr/bin/AdGuardHome/AdGuardHome
-          rm -rf AdGuardHome AdGuardHome_linux_amd64.tar.gz
-          
-          wget -q "${GHPREFIX}https://github.com/MetaCubeX/mihomo/releases/download/${{ steps.version.outputs.MIHOMO_TAG }}/mihomo-linux-amd64-${{ steps.version.outputs.MIHOMO_TAG }}.gz"
-          gunzip -c mihomo-*.gz > FILES/etc/openclash/core/clash_meta
-          chmod +x FILES/etc/openclash/core/clash_meta
-          rm -f mihomo-*.gz
-          
-          find FILES -type f
-      
       - name: Build firmware
+        id: build
         run: |
-          cd ${{ env.IMAGEBUILDER_DIR }}
-          PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
-          rm -rf output bin/targets && mkdir -p output
+          # 调用融合脚本（静默模式），输出变量供后续步骤使用
+          bash build-local.sh --batch > /tmp/build-vars.txt
+          echo "=== Build variables ==="
+          cat /tmp/build-vars.txt
           
-          # ImageBuilder 一次运行生成所有格式
-          echo "Building all firmware formats..."
-          make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log
-          
-          # 显示构建产物
-          echo "Build output:"
-          find bin/targets -type f \( -name "*.img.gz" -o -name "*.qcow2.gz" -o -name "*.vmdk.gz" -o -name "*.vdi.gz" -o -name "*.vhdx.gz" \) 2>/dev/null || true
-          
-          [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
-          
-          mkdir -p ${{ github.workspace }}/firmware
-          cp -r output/* ${{ github.workspace }}/firmware/
-          
-          echo "Firmware files:"
-          ls -lh ${{ github.workspace }}/firmware/
-      
-      - name: Inject scripts to firmware
-        run: |
-          cd ${{ github.workspace }}/firmware
-          echo "注入脚本到固件..."
-          
-          # 复制注入脚本
-          cp ${{ github.workspace }}/inject-autoexpand.sh /tmp/
-          cp ${{ github.workspace }}/inject-dhcp.sh /tmp/
-          chmod +x /tmp/inject-autoexpand.sh /tmp/inject-dhcp.sh
-          
-          # 处理 rootfs.tar.gz - 注入 DHCP 关闭脚本
-          echo "处理 rootfs.tar.gz..."
-          for img in *rootfs*.tar.gz; do
-            if [ -f "$img" ]; then
-              echo "处理: $img"
-              /tmp/inject-dhcp.sh "$img" || echo "警告: 处理失败: $img"
-            fi
-          done
-          
-          # 处理 ext4 固件 - 注入自动扩容脚本
-          echo "处理 ext4 固件..."
-          COUNT=0
-          for img in *ext4*.img.gz; do
-            if [ -f "$img" ]; then
-              echo "处理: $img"
-              /tmp/inject-autoexpand.sh "$img" || echo "警告: 处理失败: $img"
-              COUNT=$((COUNT + 1))
-            fi
-          done
-          
-          if [ $COUNT -eq 0 ]; then
-            echo "未找到 ext4 固件"
-          else
-            echo "✅ 已处理 $COUNT 个 ext4 固件"
-          fi
-          
-          echo "处理后的文件:"
-          ls -lh *rootfs*.tar.gz *ext4*.img.gz 2>/dev/null || true
-      
-      - name: Generate build info
-        run: |
-          cd ${{ github.workspace }}/firmware
-          echo "ImmortalWrt Firmware Build Info" > build-info.txt
-          echo "================================" >> build-info.txt
-          echo "Build Time: $(date '+%Y-%m-%d %H:%M:%S')" >> build-info.txt
-          echo "Version: ${{ steps.version.outputs.VERSION }}" >> build-info.txt
-          echo "KMods: ${{ steps.version.outputs.KMODS_SUBDIR }}" >> build-info.txt
-          echo "" >> build-info.txt
-          echo "Third-party Versions:" >> build-info.txt
-          echo "- EasyTier: ${{ steps.version.outputs.EASYTIER_TAG }}" >> build-info.txt
-          echo "- Lucky: ${{ steps.version.outputs.LUCKY_TAG }}" >> build-info.txt
-          echo "- AdGuardHome LuCI: ${{ steps.version.outputs.ADG_TAG }}" >> build-info.txt
-          echo "- AdGuardHome Core: ${{ steps.version.outputs.ADG_CORE_TAG }}" >> build-info.txt
-          echo "- Mihomo: ${{ steps.version.outputs.MIHOMO_TAG }}" >> build-info.txt
-          echo "" >> build-info.txt
-          echo "Docker Image:" >> build-info.txt
-          echo "- Repository: ${{ env.DOCKER_REPO }}" >> build-info.txt
-          echo "- Tags: ${{ env.DOCKER_TAG }}, ${{ env.BUILD_DATE }}" >> build-info.txt
-          echo "- Pull: docker pull ${{ env.DOCKER_REPO }}:${{ env.DOCKER_TAG }}" >> build-info.txt
-          echo "" >> build-info.txt
-          echo "📦 Docker 仓库同步：" >> build-info.txt
-          echo "immortalwrt-x86-64-generic-rootfs.tar.gz 已同步推送至 Docker 仓库 jessekool/immortalwrt_multiple_ethports" >> build-info.txt
-          echo "地址：https://hub.docker.com/r/jessekool/immortalwrt_multiple_ethports" >> build-info.txt
-          echo "docker固件已关闭Lan口（br-lan)DHCP，避免潜在冲突" >> build-info.txt
+          # 将关键变量注入 GitHub Actions 上下文
+          source /tmp/build-vars.txt
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "OUTPUT_DIR=${OUTPUT_DIR}" >> $GITHUB_ENV
+          echo "BUILD_TIME=${BUILD_TIME}" >> $GITHUB_ENV
+        env:
+          WORK_DIR: "${{ github.workspace }}/immortalwrt"
+          OUTPUT_DIR: "${{ github.workspace }}/firmware"
+          IMMORTALWRT_VERSION: "${{ github.event.inputs.version }}"
       
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: immortalwrt-${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
-          name: "ImmortalWrt ${{ steps.version.outputs.VERSION }} - Build at ${{ env.BUILD_TIME }}"
+          tag_name: immortalwrt-${{ steps.build.outputs.VERSION }}-${{ github.run_number }}
+          name: "ImmortalWrt ${{ steps.build.outputs.VERSION }} - Build at ${{ env.BUILD_TIME }}"
           body_path: ${{ github.workspace }}/firmware/build-info.txt
           files: |
             ${{ github.workspace }}/firmware/*
@@ -240,7 +66,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-firmware-${{ steps.version.outputs.VERSION }}
+          name: immortalwrt-firmware-${{ steps.build.outputs.VERSION }}
           path: ${{ github.workspace }}/firmware/
           retention-days: 30
       
