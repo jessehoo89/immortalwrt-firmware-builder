@@ -234,7 +234,7 @@ cd "$OUTPUT_DIR"
 for img in *rootfs*.tar.gz; do
     if [ -f "$img" ]; then
         if [ -f "$SCRIPT_DIR/inject-dhcp.sh" ]; then
-            bash "$SCRIPT_DIR/inject-dhcp.sh" "$img" || echo "警告: DHCP 注入失败: $img" >&2
+            bash "$SCRIPT_DIR/inject-dhcp.sh" "$img" >&2 || echo "警告: DHCP 注入失败: $img" >&2
         else
             log_warn_batch "未找到 inject-dhcp.sh，跳过 DHCP 注入"
             $BATCH || log_warn "未找到 inject-dhcp.sh，跳过 DHCP 注入"
@@ -247,7 +247,7 @@ COUNT=0
 for img in *ext4*.img.gz; do
     if [ -f "$img" ]; then
         if [ -f "$SCRIPT_DIR/inject-autoexpand.sh" ]; then
-            bash "$SCRIPT_DIR/inject-autoexpand.sh" "$img" || echo "警告: 自动扩容注入失败: $img" >&2
+            bash "$SCRIPT_DIR/inject-autoexpand.sh" "$img" >&2 || echo "警告: 自动扩容注入失败: $img" >&2
             COUNT=$((COUNT + 1))
         else
             log_warn_batch "未找到 inject-autoexpand.sh，跳过自动扩容注入"
