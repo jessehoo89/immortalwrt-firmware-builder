@@ -77,7 +77,15 @@ sudo tee "$MNT_DIR/etc/uci-defaults/99-auto-expand" > /dev/null << 'INJECT_EOF'
 #!/bin/sh
 # 自动扩容脚本 - 首次启动时执行
 
-ROOT_DEV=$(findmnt -n -o SOURCE /)
+# 从 /proc/mounts 获取根设备（比 findmnt 可靠，基础系统可能无 findmnt）
+ROOT_DEV=$(awk '$2 == "/" {print $1}' /proc/mounts)
+
+# 处理 /dev/root 符号链接（部分系统用 PARTUUID 挂载时出现）
+case "$ROOT_DEV" in
+    /dev/root) ROOT_DEV=$(readlink -f /dev/root 2>/dev/null || echo "") ;;
+esac
+[ -z "$ROOT_DEV" ] && exit 0
+
 ROOT_SIZE=$(df / | tail -1 | awk '{print $2}')
 
 # 如果已经扩容过（大于1GB），跳过
@@ -85,20 +93,24 @@ ROOT_SIZE=$(df / | tail -1 | awk '{print $2}')
 
 # 识别磁盘和分区号
 case "$ROOT_DEV" in
-    /dev/mmcblk*p*|/dev/nvme*n*p*)
+    /dev/mmcblk*)
         DISK=$(echo "$ROOT_DEV" | sed 's/p[0-9]*$//')
-        PART_NUM=$(echo "$ROOT_DEV" | sed 's/p[0-9]*$//' | sed 's/.*[a-z]//')
+        PART_NUM=$(echo "$ROOT_DEV" | sed 's/.*p//')
         ;;
-    /dev/sd*|/dev/vd*|/dev/xvd*)
+    /dev/nvme*)
+        DISK=$(echo "$ROOT_DEV" | sed 's/p[0-9]*$//')
+        PART_NUM=$(echo "$ROOT_DEV" | sed 's/.*p//')
+        ;;
+    /dev/sd*|/dev/vd*|/dev/xvd*|/dev/loop*)
         DISK=$(echo "$ROOT_DEV" | sed 's/[0-9]*$//')
         PART_NUM=$(echo "$ROOT_DEV" | sed 's/.*[^0-9]//')
         ;;
-    *) exit 1 ;;
+    *) exit 0 ;;
 esac
 
-# 安装必要工具并扩容
-opkg update >/dev/null 2>&1
-opkg install parted e2fsprogs-resize2fs >/dev/null 2>&1
+[ -z "$DISK" ] && exit 0
+
+# 扩容（parted 和 e2fsprogs 已作为 luci-app-diskman 的依赖内置）
 parted -s "$DISK" resizepart "$PART_NUM" 100% >/dev/null 2>&1
 resize2fs "$ROOT_DEV" >/dev/null 2>&1
 
