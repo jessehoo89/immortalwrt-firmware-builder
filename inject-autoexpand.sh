@@ -76,6 +76,9 @@ sudo mkdir -p "$MNT_DIR/etc/uci-defaults/"
 sudo tee "$MNT_DIR/etc/uci-defaults/99-auto-expand" > /dev/null << 'INJECT_EOF'
 #!/bin/sh
 # 自动扩容脚本 - 首次启动时执行
+# 使用 parted + partx + resize2fs 三阶段扩容
+
+LOGTAG="auto-expand"
 
 # 从 /proc/mounts 获取根设备（比 findmnt 可靠，基础系统可能无 findmnt）
 ROOT_DEV=$(awk '$2 == "/" {print $1}' /proc/mounts)
@@ -84,12 +87,19 @@ ROOT_DEV=$(awk '$2 == "/" {print $1}' /proc/mounts)
 case "$ROOT_DEV" in
     /dev/root) ROOT_DEV=$(readlink -f /dev/root 2>/dev/null || echo "") ;;
 esac
-[ -z "$ROOT_DEV" ] && exit 0
+[ -z "$ROOT_DEV" ] && { logger -t "$LOGTAG" "无法获取根设备"; exit 0; }
+
+logger -t "$LOGTAG" "根设备: $ROOT_DEV"
 
 ROOT_SIZE=$(df / | tail -1 | awk '{print $2}')
 
 # 如果已经扩容过（大于1GB），跳过
-[ "$ROOT_SIZE" -gt 1000000 ] && { rm -f "$0"; exit 0; }
+if [ "$ROOT_SIZE" -gt 1000000 ]; then
+    logger -t "$LOGTAG" "根分区已大于1GB(${ROOT_SIZE}KB)，跳过扩容"
+    rm -f "$0"
+    exit 0
+fi
+logger -t "$LOGTAG" "根分区大小: ${ROOT_SIZE}KB，需要扩容"
 
 # 识别磁盘和分区号
 case "$ROOT_DEV" in
@@ -105,14 +115,41 @@ case "$ROOT_DEV" in
         DISK=$(echo "$ROOT_DEV" | sed 's/[0-9]*$//')
         PART_NUM=$(echo "$ROOT_DEV" | sed 's/.*[^0-9]//')
         ;;
-    *) exit 0 ;;
+    *)
+        logger -t "$LOGTAG" "不支持的磁盘类型: $ROOT_DEV"
+        exit 0 ;;
 esac
 
-[ -z "$DISK" ] && exit 0
+[ -z "$DISK" ] && { logger -t "$LOGTAG" "无法识别磁盘"; exit 0; }
+logger -t "$LOGTAG" "磁盘: $DISK, 分区: $PART_NUM"
 
-# 扩容（parted 和 e2fsprogs 已作为 luci-app-diskman 的依赖内置）
-parted -s "$DISK" resizepart "$PART_NUM" 100% >/dev/null 2>&1
-resize2fs "$ROOT_DEV" >/dev/null 2>&1
+# 阶段1: 用 parted 修改分区表（写入磁盘）
+logger -t "$LOGTAG" "阶段1: parted 修改分区表..."
+if parted -s "$DISK" resizepart "$PART_NUM" 100%; then
+    logger -t "$LOGTAG" "parted 修改分区表成功"
+else
+    logger -t "$LOGTAG" "parted 修改分区表失败"
+fi
+
+# 阶段2: 用 partx 通知内核更新分区信息（解决根分区挂载中无法 BLKRRPART 的问题）
+if command -v partx >/dev/null 2>&1; then
+    logger -t "$LOGTAG" "阶段2: partx 更新内核分区信息..."
+    if partx -u -n "$PART_NUM" "$DISK"; then
+        logger -t "$LOGTAG" "partx 更新成功"
+    else
+        logger -t "$LOGTAG" "partx 更新失败"
+    fi
+else
+    logger -t "$LOGTAG" "partx 不可用，跳过"
+fi
+
+# 阶段3: 扩容文件系统
+logger -t "$LOGTAG" "阶段3: resize2fs 扩容文件系统..."
+if resize2fs "$ROOT_DEV"; then
+    logger -t "$LOGTAG" "resize2fs 扩容成功"
+else
+    logger -t "$LOGTAG" "resize2fs 扩容失败"
+fi
 
 # 清理自身
 rm -f "$0"
