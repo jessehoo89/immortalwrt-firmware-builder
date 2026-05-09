@@ -245,10 +245,9 @@ cd "$IMAGEBUILDER_DIR"
 PACKAGES="partx-utils resize2fs parted e2fsprogs kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
-# 配置rootfs分区大小（16GB，足够覆盖大多数U盘/硬盘）
-# 如果实际磁盘空间不足，ext4会自动使用可用空间
+# 配置rootfs分区大小（14GB，适配大多数U盘/硬盘）
 cat > .config << 'EOF'
-CONFIG_TARGET_ROOTFS_PARTSIZE=16384
+CONFIG_TARGET_ROOTFS_PARTSIZE=14336
 CONFIG_TARGET_ROOTFS_EXT4FS=y
 EOF
 
@@ -277,26 +276,6 @@ for img in *rootfs*.tar.gz; do
         fi
     fi
 done
-
-# 注入自动扩容脚本
-COUNT=0
-for img in *ext4*.img.gz; do
-    if [ -f "$img" ]; then
-        if [ -f "$SCRIPT_DIR/inject-autoexpand.sh" ]; then
-            bash "$SCRIPT_DIR/inject-autoexpand.sh" "$img" >&2 || echo "警告: 自动扩容注入失败: $img" >&2
-            COUNT=$((COUNT + 1))
-        else
-            log_warn_batch "未找到 inject-autoexpand.sh，跳过自动扩容注入"
-            $BATCH || log_warn "未找到 inject-autoexpand.sh，跳过自动扩容注入"
-        fi
-    fi
-done
-
-if $BATCH; then
-    [ $COUNT -gt 0 ] && log_info_batch "已处理 $COUNT 个 ext4 固件" || log_info_batch "未找到 ext4 固件"
-else
-    [ $COUNT -gt 0 ] && log_info "✅ 已处理 $COUNT 个 ext4 固件" || log_info "未找到 ext4 固件"
-fi
 
 # --- 步骤 9: 生成构建信息 ---
 $BATCH && log_step_batch "9/9 生成构建信息..." || log_step "9/9 生成构建信息..."
