@@ -134,21 +134,35 @@ fi
 # 阶段2: 用 partx 通知内核更新分区信息（解决根分区挂载中无法 BLKRRPART 的问题）
 if command -v partx >/dev/null 2>&1; then
     logger -t "$LOGTAG" "阶段2: partx 更新内核分区信息..."
-    if partx -u -n "$PART_NUM" "$DISK"; then
+    if partx -u -n "$PART_NUM" "$DISK" 2>/dev/null; then
         logger -t "$LOGTAG" "partx 更新成功"
     else
-        logger -t "$LOGTAG" "partx 更新失败"
+        logger -t "$LOGTAG" "partx 更新失败或无需更新"
     fi
 else
     logger -t "$LOGTAG" "partx 不可用，跳过"
 fi
 
-# 阶段3: 扩容文件系统
-logger -t "$LOGTAG" "阶段3: resize2fs 扩容文件系统..."
-if resize2fs "$ROOT_DEV"; then
+# 阶段3: 修复文件系统（在线扩容前必须修复）
+logger -t "$LOGTAG" "阶段3: e2fsck 修复文件系统..."
+if command -v e2fsck >/dev/null 2>&1; then
+    # -f: 强制检查 -y: 自动修复
+    if e2fsck -f -n "$ROOT_DEV" 2>/dev/null; then
+        logger -t "$LOGTAG" "e2fsck 检查通过"
+    else
+        logger -t "$LOGTAG" "e2fsck 发现问题，尝试修复..."
+        e2fsck -f -y "$ROOT_DEV" 2>/dev/null || true
+    fi
+else
+    logger -t "$LOGTAG" "e2fsck 不可用，跳过修复"
+fi
+
+# 阶段4: 扩容文件系统
+logger -t "$LOGTAG" "阶段4: resize2fs 扩容文件系统..."
+if resize2fs "$ROOT_DEV" 2>/dev/null; then
     logger -t "$LOGTAG" "resize2fs 扩容成功"
 else
-    logger -t "$LOGTAG" "resize2fs 扩容失败"
+    logger -t "$LOGTAG" "resize2fs 在线扩容失败"
 fi
 
 # 清理自身
