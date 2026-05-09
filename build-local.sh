@@ -197,16 +197,45 @@ src/gz immortalwrt_routing $MIRROR/releases/${VERSION}/packages/x86_64/routing
 src/gz immortalwrt_telephony $MIRROR/releases/${VERSION}/packages/x86_64/telephony
 EOF
 
-wget -q "${GHPREFIX}https://github.com/AdguardTeam/AdGuardHome/releases/download/${ADG_CORE_TAG}/AdGuardHome_linux_amd64.tar.gz"
-tar -xzf AdGuardHome_linux_amd64.tar.gz
-mv AdGuardHome/AdGuardHome FILES/usr/bin/AdGuardHome/
-chmod +x FILES/usr/bin/AdGuardHome/AdGuardHome
-rm -rf AdGuardHome AdGuardHome_linux_amd64.tar.gz
+# 下载 AdGuardHome 核心
+echo "下载 AdGuardHome 核心 ${ADG_CORE_TAG}..." >&2
+if wget -q "${GHPREFIX}https://github.com/AdguardTeam/AdGuardHome/releases/download/${ADG_CORE_TAG}/AdGuardHome_linux_amd64.tar.gz" -O AdGuardHome_linux_amd64.tar.gz 2>&1; then
+    if [ -s AdGuardHome_linux_amd64.tar.gz ]; then
+        tar -xzf AdGuardHome_linux_amd64.tar.gz
+        if [ -f AdGuardHome/AdGuardHome ]; then
+            mv AdGuardHome/AdGuardHome FILES/usr/bin/AdGuardHome/
+            chmod +x FILES/usr/bin/AdGuardHome/AdGuardHome
+            echo "✅ AdGuardHome 核心下载成功: $(FILES/usr/bin/AdGuardHome/AdGuardHome --version 2>&1 | head -1)" >&2
+        else
+            echo "❌ AdGuardHome 核心解压失败: 未找到可执行文件" >&2
+            exit 1
+        fi
+        rm -rf AdGuardHome AdGuardHome_linux_amd64.tar.gz
+    else
+        echo "❌ AdGuardHome 核心下载失败: 文件为空" >&2
+        exit 1
+    fi
+else
+    echo "❌ AdGuardHome 核心下载失败: wget错误" >&2
+    exit 1
+fi
 
-wget -q "${GHPREFIX}https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_TAG}/mihomo-linux-amd64-${MIHOMO_TAG}.gz"
-gunzip -c mihomo-*.gz > FILES/etc/openclash/core/clash_meta
-chmod +x FILES/etc/openclash/core/clash_meta
-rm -f mihomo-*.gz
+# 下载 mihomo 核心
+echo "下载 mihomo 核心 ${MIHOMO_TAG}..." >&2
+if wget -q "${GHPREFIX}https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_TAG}/mihomo-linux-amd64-${MIHOMO_TAG}.gz" -O mihomo-linux-amd64-${MIHOMO_TAG}.gz 2>&1; then
+    if [ -s "mihomo-linux-amd64-${MIHOMO_TAG}.gz" ]; then
+        gunzip -c mihomo-*.gz > FILES/etc/openclash/core/clash_meta
+        chmod +x FILES/etc/openclash/core/clash_meta
+        echo "✅ mihomo 核心下载成功" >&2
+        rm -f mihomo-*.gz
+    else
+        echo "❌ mihomo 核心下载失败: 文件为空" >&2
+        exit 1
+    fi
+else
+    echo "❌ mihomo 核心下载失败: wget错误" >&2
+    exit 1
+fi
 
 $BATCH && log_info_batch "FILES 目录准备完成" || log_info "FILES 目录准备完成"
 
