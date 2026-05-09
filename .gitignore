@@ -1,31 +1,39 @@
-# 构建产物
-output/
-bin/
-FILES/
-packages/*.zip
-packages/*.gz
-packages/*.tar.gz
-*.img.gz
-*.manifest
-*.buildinfo
-build.log
-imagebuilder.tar.zst
-adg.tar.gz
-mihomo.gz
+```
+# Environment
+.env
+.env.local
+*.env.*
 
-# 临时文件
+# Logs and temporary files
+*.log
 *.tmp
 *.swp
-*.swo
-*~
 
-# IDE
+# Editors
 .vscode/
 .idea/
 
-# 系统文件
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py.class
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/modules/
 .DS_Store
 Thumbs.db
-
-# 固件文件（本地测试用）
-firmware/
+```
