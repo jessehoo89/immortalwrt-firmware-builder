@@ -35,7 +35,8 @@ jobs:
         id: build
         run: |
           # 调用融合脚本（静默模式），输出变量供后续步骤使用
-          bash build-local.sh --batch > /tmp/build-vars.txt
+          # stderr输出到GitHub Actions日志，stdout只捕获变量
+          bash build-local.sh --batch 2>&1 | tee /tmp/build-output.log | grep -v "^\[" > /tmp/build-vars.txt
           echo "=== Build variables ==="
           cat /tmp/build-vars.txt
           
