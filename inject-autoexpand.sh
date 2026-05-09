@@ -143,28 +143,17 @@ else
     logger -t "$LOGTAG" "partx 不可用，跳过"
 fi
 
-# 阶段3: 修复文件系统（在线扩容前必须修复）
-logger -t "$LOGTAG" "阶段3: e2fsck 修复文件系统..."
-if command -v e2fsck >/dev/null 2>&1; then
-    if e2fsck -f -n "$ROOT_DEV" 2>/dev/null; then
-        logger -t "$LOGTAG" "e2fsck 检查通过"
-    else
-        logger -t "$LOGTAG" "e2fsck 发现问题，尝试修复..."
-        e2fsck -f -y "$ROOT_DEV" 2>/dev/null || true
-    fi
-else
-    logger -t "$LOGTAG" "e2fsck 不可用，跳过修复"
-fi
-
-# 阶段4: 扩容文件系统
-logger -t "$LOGTAG" "阶段4: resize2fs 扩容文件系统..."
+# 阶段3: 扩容文件系统（resize2fs支持在线扩容）
+logger -t "$LOGTAG" "阶段3: resize2fs 在线扩容文件系统..."
 if resize2fs "$ROOT_DEV" 2>/dev/null; then
-    logger -t "$LOGTAG" "resize2fs 扩容成功"
+    logger -t "$LOGTAG" "resize2fs 在线扩容成功"
 else
-    logger -t "$LOGTAG" "resize2fs 在线扩容失败，尝试修复后重试"
-    if command -v e2fsck >/dev/null 2>&1; then
-        e2fsck -f -y "$ROOT_DEV" 2>/dev/null || true
-        resize2fs "$ROOT_DEV" 2>/dev/null || logger -t "$LOGTAG" "resize2fs 最终失败"
+    logger -t "$LOGTAG" "resize2fs 在线扩容失败"
+    # 尝试用 resize2fs -f 强制扩容
+    if resize2fs -f "$ROOT_DEV" 2>/dev/null; then
+        logger -t "$LOGTAG" "resize2fs -f 强制扩容成功"
+    else
+        logger -t "$LOGTAG" "resize2fs 扩容最终失败"
     fi
 fi
 

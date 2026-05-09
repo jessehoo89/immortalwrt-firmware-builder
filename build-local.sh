@@ -205,7 +205,7 @@ if wget -q "${GHPREFIX}https://github.com/AdguardTeam/AdGuardHome/releases/downl
         if [ -f AdGuardHome/AdGuardHome ]; then
             mv AdGuardHome/AdGuardHome FILES/usr/bin/AdGuardHome/
             chmod +x FILES/usr/bin/AdGuardHome/AdGuardHome
-            echo "✅ AdGuardHome 核心下载成功: $(FILES/usr/bin/AdGuardHome/AdGuardHome --version 2>&1 | head -1)" >&2
+            echo "✅ AdGuardHome 核心下载成功: $(ls -lh FILES/usr/bin/AdGuardHome/AdGuardHome | awk '{print $5}')" >&2
         else
             echo "❌ AdGuardHome 核心解压失败: 未找到可执行文件" >&2
             exit 1
