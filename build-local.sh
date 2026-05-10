@@ -245,13 +245,8 @@ cd "$IMAGEBUILDER_DIR"
 PACKAGES="partx-utils resize2fs parted e2fsprogs kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
-# 配置rootfs分区大小（14GB，适配大多数U盘/硬盘）
-cat > .config << 'EOF'
-CONFIG_TARGET_ROOTFS_PARTSIZE=14336
-CONFIG_TARGET_ROOTFS_EXT4FS=y
-EOF
-
-make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log >&2
+# 设置rootfs分区大小为14GB（14336 MB）
+ROOTFSSIZE=14336 make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log >&2
 
 # 复制构建产物
 [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
