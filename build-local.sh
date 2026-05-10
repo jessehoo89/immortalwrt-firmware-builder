@@ -187,13 +187,6 @@ $BATCH && log_step_batch "6/9 准备 FILES 目录..." || log_step "6/9 准备 FI
 cd "$IMAGEBUILDER_DIR"
 mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg
 
-# 生成 OpenWrt 官方自动扩容脚本到 FILES 目录（所有固件类型通用）
-if [ -f "$SCRIPT_DIR/inject-autoexpand.sh" ]; then
-    bash "$SCRIPT_DIR/inject-autoexpand.sh" "FILES" >&2 || echo "警告: 扩容脚本生成失败" >&2
-else
-    $BATCH && log_warn_batch "未找到 inject-autoexpand.sh，跳过扩容脚本生成" || log_warn "未找到 inject-autoexpand.sh，跳过扩容脚本生成"
-fi
-
 cat > FILES/etc/opkg/distfeeds.conf << EOF
 src/gz immortalwrt_core $MIRROR/releases/${VERSION}/targets/x86/64/packages
 src/gz immortalwrt_base $MIRROR/releases/${VERSION}/packages/x86_64/base

@@ -9,7 +9,6 @@
 - 🔄 **自动获取最新版本** - 自动检测 ImmortalWrt 和第三方插件的最新版本
 - 🎯 **自动发布** - 构建完成后自动上传到 GitHub Release
 - 🐳 **Docker 镜像发布** - 自动构建并发布 Docker 镜像到 Docker Hub
-- 💾 **自动扩容** - ext4 固件自动注入扩容脚本，首次启动自动扩展分区
 - ⏰ **定时构建** - 每周日凌晨 2 点自动构建最新版
 - 📝 **详细日志** - 完整的构建信息和软件版本记录
 
@@ -83,8 +82,8 @@ docker pull jessekool/immortalwrt_multiple_ethports:<构建编号>
 |---------|------|------|
 | `*-squashfs-combined.img.gz` | 传统 BIOS 启动 | ✅ 推荐 |
 | `*-squashfs-combined-efi.img.gz` | UEFI 启动 | ✅ 推荐 |
-| `*-ext4-combined.img.gz` | 传统 BIOS，可写分区，支持自动扩容 | 可选 |
-| `*-ext4-combined-efi.img.gz` | UEFI，可写分区，支持自动扩容 | 可选 |
+| `*-ext4-combined.img.gz` | 传统 BIOS，可写分区 | 可选 |
+| `*-ext4-combined-efi.img.gz` | UEFI，可写分区 | 可选 |
 
 ### 虚拟机固件
 | 文件类型 | 平台 | 用途 |
@@ -114,6 +113,23 @@ opkg update
 opkg install parted resize2fs
 parted -s /dev/sda resizepart 2 100%
 resize2fs /dev/sda2
+```
+
+## 💾 手动扩容（ext4 固件）
+
+固件默认分区约 290MB，如需扩展到完整磁盘空间，可使用 [OpenWrt 官方扩容脚本](https://openwrt.org/docs/guide-user/advanced/expand_root)：
+
+```bash
+# 1. 安装依赖（固件已预装 parted、losetup、resize2fs）
+opkg update
+
+# 2. 下载并运行官方脚本
+wget -U "" -O expand-root.sh "https://openwrt.org/_export/code/docs/guide-user/advanced/expand_root?codeblock=0"
+. ./expand-root.sh
+
+# 3. 执行扩容（分区表 → 重启 → 文件系统 → 重启）
+sh /etc/uci-defaults/70-rootpt-resize
+# 重启后自动执行 80-rootfs-resize 完成扩容
 ```
 
 ## ⚙️ 自定义配置
