@@ -185,7 +185,77 @@ $BATCH && log_info_batch "第三方 IPK 下载完成" || log_info "第三方 IPK
 # --- 步骤 6: 准备 FILES 目录 ---
 $BATCH && log_step_batch "6/9 准备 FILES 目录..." || log_step "6/9 准备 FILES 目录..."
 cd "$IMAGEBUILDER_DIR"
-mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg
+mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg FILES/etc/uci-defaults
+
+# 注入 OpenWrt 官方自动扩容脚本
+cat > FILES/etc/uci-defaults/70-rootpt-resize << 'EXPAND_EOF'
+#!/bin/sh
+# OpenWrt 官方扩容脚本 - 阶段1: 扩展分区表
+if [ ! -e /etc/rootpt-resize ] \
+&& type parted > /dev/null \
+&& lock -n /var/lock/root-resize
+then
+ROOT_BLK="$(readlink -f /sys/dev/block/"$(awk -e \
+'$9=="/dev/root"{print $3}' /proc/self/mountinfo)")"
+ROOT_DISK="/dev/$(basename "${ROOT_BLK%/*}")"
+ROOT_PART="${ROOT_BLK##*[^0-9]}"
+parted -f -s "${ROOT_DISK}" \
+resizepart "${ROOT_PART}" 100%
+mount_root done
+touch /etc/rootpt-resize
+
+if [ -e /boot/cmdline.txt ]
+then
+NEW_UUID=`blkid ${ROOT_DISK}p${ROOT_PART} | sed -n 's/.*PARTUUID="\([^"]*\)".*/\1/p'`
+sed -i "s/PARTUUID=[^ ]*/PARTUUID=${NEW_UUID}/" /boot/cmdline.txt
+fi
+
+reboot
+fi
+exit 1
+EXPAND_EOF
+
+cat > FILES/etc/uci-defaults/80-rootfs-resize << 'EXPAND_EOF'
+#!/bin/sh
+# OpenWrt 官方扩容脚本 - 阶段2: 扩展文件系统
+if [ ! -e /etc/rootfs-resize ] \
+&& [ -e /etc/rootpt-resize ] \
+&& type losetup > /dev/null \
+&& type resize2fs > /dev/null \
+&& lock -n /var/lock/root-resize
+then
+ROOT_BLK="$(readlink -f /sys/dev/block/"$(awk -e \
+'$9=="/dev/root"{print $3}' /proc/self/mountinfo)")"
+ROOT_DEV="/dev/${ROOT_BLK##*/}"
+LOOP_DEV="$(awk -e '$5=="/overlay"{print $9}' \
+/proc/self/mountinfo)"
+if [ -z "${LOOP_DEV}" ]
+then
+LOOP_DEV="$(losetup -f)"
+losetup "${LOOP_DEV}" "${ROOT_DEV}"
+fi
+resize2fs -f "${LOOP_DEV}"
+mount_root done
+touch /etc/rootfs-resize
+reboot
+fi
+exit 1
+EXPAND_EOF
+
+chmod +x FILES/etc/uci-defaults/70-rootpt-resize FILES/etc/uci-defaults/80-rootfs-resize
+
+# 添加 sysupgrade.conf 配置，确保升级后保留扩容脚本
+cat > FILES/etc/uci-defaults/99-expand-sysupgrade << 'SYSEOF'
+#!/bin/sh
+# 将扩容脚本添加到 sysupgrade.conf
+if ! grep -q "70-rootpt-resize" /etc/sysupgrade.conf 2>/dev/null; then
+    echo "/etc/uci-defaults/70-rootpt-resize" >> /etc/sysupgrade.conf
+    echo "/etc/uci-defaults/80-rootfs-resize" >> /etc/sysupgrade.conf
+fi
+rm -f "$0"
+exit 0
+SYSEOF
+chmod +x FILES/etc/uci-defaults/99-expand-sysupgrade
 
 cat > FILES/etc/opkg/distfeeds.conf << EOF
 src/gz immortalwrt_core $MIRROR/releases/${VERSION}/targets/x86/64/packages
