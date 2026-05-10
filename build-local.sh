@@ -247,7 +247,7 @@ rm -rf output bin/targets && mkdir -p output
 
 # 不再设置ROOTFS_PARTSIZE
 # make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" ROOTFS_PARTSIZE="14336" 2>&1 | tee build.log >&2
-make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log >&2
+make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" 2>&1 | tee build.log >&2
 
 # 复制构建产物
 [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
