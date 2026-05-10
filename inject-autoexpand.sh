@@ -21,6 +21,9 @@ if [ ! -e /etc/rootpt-resize ] \
 && type parted > /dev/null \
 && lock -n /var/lock/root-resize
 then
+# 等待磁盘子系统就绪
+sleep 30
+
 ROOT_BLK="$(readlink -f /sys/dev/block/"$(awk -e \
 '$9=="/dev/root"{print $3}' /proc/self/mountinfo)")"
 ROOT_DISK="/dev/$(basename "${ROOT_BLK%/*}")"
@@ -29,11 +32,13 @@ parted -f -s "${ROOT_DISK}" \
 resizepart "${ROOT_PART}" 100%
 mount_root done
 touch /etc/rootpt-resize
+sync
 
 if [ -e /boot/cmdline.txt ]
 then
 NEW_UUID=`blkid ${ROOT_DISK}p${ROOT_PART} | sed -n 's/.*PARTUUID="\([^"]*\)".*/\1/p'`
 sed -i "s/PARTUUID=[^ ]*/PARTUUID=${NEW_UUID}/" /boot/cmdline.txt
+sync
 fi
 
 reboot
