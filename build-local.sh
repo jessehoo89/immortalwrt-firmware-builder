@@ -246,7 +246,9 @@ PACKAGES="partx-utils resize2fs parted e2fsprogs kmod-tun easytier miniupnpd-nft
 rm -rf output bin/targets && mkdir -p output
 
 # 设置rootfs分区大小为14GB（14336 MB）
-ROOTFSSIZE=14336 make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log >&2
+# ROOTFSSIZE=14336 make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" 2>&1 | tee build.log >&2
+# 直接在make命令中传递ROOTFSSIZE变量
+make image PROFILE=generic PACKAGES="$PACKAGES" FILES="FILES" EXTRA_IMAGE_NAME="immortalwrt" ROOTFS=14336 2>&1 | tee build.log >&2
 
 # 复制构建产物
 [ -d "bin/targets/x86/64" ] && cp -r bin/targets/x86/64/* output/
