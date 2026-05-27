@@ -216,7 +216,15 @@ $BATCH && log_info_batch "第三方包下载完成 (${PKG_FORMAT})" || log_info 
 # --- 步骤 6: 准备 FILES 目录 ---
 $BATCH && log_step_batch "6/9 准备 FILES 目录..." || log_step "6/9 准备 FILES 目录..."
 cd "$IMAGEBUILDER_DIR"
-mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg
+if [ "$PKG_FORMAT" = "apk" ]; then
+    # APK 模式下 AdGuardHome 包已安装 /usr/bin/AdGuardHome（文件），
+    # 用目录结构会冲突，直接将二进制放为文件
+    ADG_BIN_PATH="FILES/usr/bin"
+    mkdir -p "$ADG_BIN_PATH" FILES/etc/openclash/core FILES/etc/opkg
+else
+    ADG_BIN_PATH="FILES/usr/bin/AdGuardHome"
+    mkdir -p "$ADG_BIN_PATH" FILES/etc/openclash/core FILES/etc/opkg
+fi
 
 cat > FILES/etc/opkg/distfeeds.conf << EOF
 src/gz immortalwrt_core $MIRROR/releases/${VERSION}/targets/x86/64/packages
@@ -234,9 +242,9 @@ if wget -q "${GHPREFIX}https://github.com/AdguardTeam/AdGuardHome/releases/downl
     if [ -s AdGuardHome_linux_amd64.tar.gz ]; then
         tar -xzf AdGuardHome_linux_amd64.tar.gz
         if [ -f AdGuardHome/AdGuardHome ]; then
-            mv AdGuardHome/AdGuardHome FILES/usr/bin/AdGuardHome/
-            chmod +x FILES/usr/bin/AdGuardHome/AdGuardHome
-            echo "✅ AdGuardHome 核心下载成功: $(ls -lh FILES/usr/bin/AdGuardHome/AdGuardHome | awk '{print $5}')" >&2
+            mv AdGuardHome/AdGuardHome "$ADG_BIN_PATH"/AdGuardHome
+            chmod +x "$ADG_BIN_PATH"/AdGuardHome
+            echo "✅ AdGuardHome 核心下载成功: $(ls -lh "$ADG_BIN_PATH"/AdGuardHome | awk '{print $5}')" >&2
         else
             echo "❌ AdGuardHome 核心解压失败: 未找到可执行文件" >&2
             exit 1
