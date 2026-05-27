@@ -93,27 +93,7 @@ docker pull jessekool/immortalwrt_multiple_ethports:<构建编号>
 | `*.vdi.gz` | VirtualBox | VirtualBox 虚拟机 |
 | `*.vhdx.gz` | Hyper-V | Windows Hyper-V |
 
-### 自动扩容说明
-
-**ext4 固件特性：**
-- 首次启动时自动执行扩容脚本
-- 自动识别磁盘类型（SD卡、NVMe、SATA等）
-- 自动安装 `parted` 和 `resize2fs` 工具
-- 扩容完成后自动删除脚本，不会重复执行
-- 支持容器环境（Docker/LXC）和物理机/虚拟机
-
-**使用方法：**
-1. 下载 ext4 格式的固件（`*ext4*.img.gz`）
-2. 写入磁盘或导入虚拟机
-3. 首次启动时自动扩容，无需手动操作
-
-**手动扩容（备用）：**
-```bash
-opkg update
-opkg install parted resize2fs
-parted -s /dev/sda resizepart 2 100%
-resize2fs /dev/sda2
-```
+### 扩容说明
 
 ## 💾 手动扩容（ext4 固件）
 
