@@ -93,9 +93,9 @@ docker pull jessekool/immortalwrt_multiple_ethports:<构建编号>
 | `*.vdi.gz` | VirtualBox | VirtualBox 虚拟机 |
 | `*.vhdx.gz` | Hyper-V | Windows Hyper-V |
 
-### 扩容说明
+## 扩容说明
 
-## 💾 手动扩容（ext4 固件）
+### 💾 手动扩容（ext4 固件）
 
 固件默认分区约 290MB，如需扩展到完整磁盘空间，可使用 [OpenWrt 官方扩容脚本](https://openwrt.org/docs/guide-user/advanced/expand_root)：
 
