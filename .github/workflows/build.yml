@@ -74,7 +74,7 @@ jobs:
       - name: Prepare Docker build context
         run: |
           mkdir -p docker/openwrt
-          FIRMWARE_PATH=$(find ${{ github.workspace }}/firmware -name "*immortalwrt-x86-64-generic-rootfs.tar.gz" | head -n 1)
+          FIRMWARE_PATH=$(find ${{ github.workspace }}/firmware -name "*x86-64-generic-rootfs.tar.gz" | head -n 1)
           if [ -z "$FIRMWARE_PATH" ]; then
             echo "Error: Firmware file not found!"
             exit 1
