@@ -115,14 +115,32 @@ KMODS_SUBDIR=$(curl -s "$MIRROR/releases/${VERSION}/targets/x86/64/kmods/" \
 [ -z "$KMODS_SUBDIR" ] && KMODS_SUBDIR="6.6.122-1-e7e50fbc0aafa7443418a79928da2602"
 $BATCH && log_info_batch "KMods 目录: ${KMODS_SUBDIR}" || log_info "KMods 目录: ${KMODS_SUBDIR}"
 
+# 判断包管理器格式
+if [[ "$VERSION" =~ ^2[5-9]\. ]] || [[ "$VERSION" =~ ^[3-9][0-9]\. ]]; then
+    PKG_FORMAT="apk"
+else
+    PKG_FORMAT="ipk"
+fi
+$BATCH && log_info_batch "包管理器: ${PKG_FORMAT}" || log_info "包管理器: ${PKG_FORMAT}"
+
 EASYTIER_TAG=$(get_latest_tag "EasyTier/luci-app-easytier")
-LUCKY_TAG=$(get_latest_tag "gdy666/luci-app-lucky")
+
+if [ "$PKG_FORMAT" = "apk" ]; then
+    LUCKY_REPO="sirpdboy/luci-app-lucky"
+else
+    LUCKY_REPO="gdy666/luci-app-lucky"
+fi
+LUCKY_TAG=$(get_latest_tag "$LUCKY_REPO")
 ADG_TAG=$(get_latest_tag "stevenjoezhang/luci-app-adguardhome")
 ADG_CORE_TAG=$(get_latest_tag "AdguardTeam/AdGuardHome")
 MIHOMO_TAG=$(get_latest_tag "MetaCubeX/mihomo")
 
 EASYTIER_TAG="${EASYTIER_TAG:-v2.5.0}"
-LUCKY_TAG="${LUCKY_TAG:-v2.19.5}"
+if [ "$PKG_FORMAT" = "apk" ]; then
+    LUCKY_TAG="${LUCKY_TAG:-v2.27.2}"
+else
+    LUCKY_TAG="${LUCKY_TAG:-v2.19.5}"
+fi
 ADG_TAG="${ADG_TAG:-v1.19}"
 ADG_CORE_TAG="${ADG_CORE_TAG:-v0.107.55}"
 MIHOMO_TAG="${MIHOMO_TAG:-v1.19.0}"
@@ -166,21 +184,34 @@ src/gz immortalwrt_telephony $MIRROR/releases/${VERSION}/packages/x86_64/telepho
 src imagebuilder file:packages
 EOF
 
-# --- 步骤 5: 下载第三方 IPK ---
-$BATCH && log_step_batch "5/9 下载第三方 IPK..." || log_step "5/9 下载第三方 IPK..."
+# --- 步骤 5: 下载第三方包 (IPK/APK 按版本自动选择) ---
+$BATCH && log_step_batch "5/9 下载第三方包 (${PKG_FORMAT})..." || log_step "5/9 下载第三方包 (${PKG_FORMAT})..."
 cd "$IMAGEBUILDER_DIR/packages"
 
-wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-22.03.7.zip"
-unzip -q EasyTier-*.zip && rm -f EasyTier-*.zip
+if [ "$PKG_FORMAT" = "apk" ]; then
+    # === 25.x+ (APK 格式) ===
+    wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-SNAPSHOT.zip"
+    unzip -q EasyTier-*.zip && rm -f EasyTier-*.zip
 
-wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${LUCKY_TAG}/luci-app-lucky_2.2.2-r1_all.ipk"
-wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${LUCKY_TAG}/luci-i18n-lucky-zh-cn_25.051.13443.e78d498_all.ipk"
-wget -q "${GHPREFIX}https://github.com/gdy666/luci-app-lucky/releases/download/${LUCKY_TAG}/lucky_2.19.5_Openwrt_x86_64.ipk"
+    wget -q "${GHPREFIX}https://github.com/${LUCKY_REPO}/releases/download/${LUCKY_TAG}/SNAPSHOT-x86_64.tar.gz"
+    tar -xzf SNAPSHOT-x86_64.tar.gz --strip-components=1 -C . && rm -f SNAPSHOT-x86_64.tar.gz
 
-wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome_1.19_all.ipk"
-wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
+    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk"
+    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk"
+else
+    # === 24.x- (IPK 格式) ===
+    wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-22.03.7.zip"
+    unzip -q EasyTier-*.zip && rm -f EasyTier-*.zip
 
-$BATCH && log_info_batch "第三方 IPK 下载完成" || log_info "第三方 IPK 下载完成"
+    wget -q "${GHPREFIX}https://github.com/${LUCKY_REPO}/releases/download/${LUCKY_TAG}/luci-app-lucky_2.2.2-r1_all.ipk"
+    wget -q "${GHPREFIX}https://github.com/${LUCKY_REPO}/releases/download/${LUCKY_TAG}/luci-i18n-lucky-zh-cn_25.051.13443.e78d498_all.ipk"
+    wget -q "${GHPREFIX}https://github.com/${LUCKY_REPO}/releases/download/${LUCKY_TAG}/lucky_2.19.5_Openwrt_x86_64.ipk"
+
+    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome_${ADG_TAG#v}_all.ipk"
+    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
+fi
+
+$BATCH && log_info_batch "第三方包下载完成 (${PKG_FORMAT})" || log_info "第三方包下载完成 (${PKG_FORMAT})"
 
 # --- 步骤 6: 准备 FILES 目录 ---
 $BATCH && log_step_batch "6/9 准备 FILES 目录..." || log_step "6/9 准备 FILES 目录..."
