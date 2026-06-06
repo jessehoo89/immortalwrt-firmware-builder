@@ -20,7 +20,7 @@ GHPROXY="https://gh-proxy.org"
 PACKAGES_BASE="kmod-tun easytier miniupnpd-nftables"
 
 # 代理和广告过滤
-PACKAGES_PROXY="lucky luci-app-adguardhome luci-app-openclash"
+PACKAGES_PROXY="lucky luci-app-openclash"
 
 # LuCI 主题和工具
 PACKAGES_LUCI="luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol"
@@ -32,7 +32,7 @@ PACKAGES_NETWORK="luci-app-easytier luci-app-zerotier"
 PACKAGES_STORAGE="luci-app-diskman"
 
 # 国际化包
-PACKAGES_I18N="luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
+PACKAGES_I18N="luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn"
 
 # 完整包列表
 PACKAGES="${PACKAGES_BASE} ${PACKAGES_PROXY} ${PACKAGES_LUCI} ${PACKAGES_NETWORK} ${PACKAGES_STORAGE} ${PACKAGES_I18N}"
