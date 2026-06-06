@@ -178,10 +178,10 @@ src/gz immortalwrt_core $MIRROR/releases/${VERSION}/targets/x86/64/packages
 src/gz immortalwrt_base $MIRROR/releases/${VERSION}/packages/x86_64/base
 src/gz immortalwrt_kmods $MIRROR/releases/${VERSION}/targets/x86/64/kmods/${KMODS_SUBDIR}
 src/gz immortalwrt_luci $MIRROR/releases/${VERSION}/packages/x86_64/luci
+src imagebuilder file:packages
 src/gz immortalwrt_packages $MIRROR/releases/${VERSION}/packages/x86_64/packages
 src/gz immortalwrt_routing $MIRROR/releases/${VERSION}/packages/x86_64/routing
 src/gz immortalwrt_telephony $MIRROR/releases/${VERSION}/packages/x86_64/telephony
-src imagebuilder file:packages
 EOF
 
 # --- 步骤 5: 下载第三方包 (IPK/APK 按版本自动选择) ---
@@ -198,9 +198,6 @@ if [ "$PKG_FORMAT" = "apk" ]; then
 
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk"
-    # 从下载的 APK 中提取精确版本号（.PKGINFO 是 APK 标准元数据）
-    ADG_APK_FILE=$(ls luci-app-adguardhome-*.apk 2>/dev/null | head -1)
-    ADG_PKG_VER=$(tar -xzf "$ADG_APK_FILE" -O .PKGINFO 2>/dev/null | grep '^pkgver' | awk '{print $3}')
 else
     # === 24.x- (IPK 格式) ===
     wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-22.03.7.zip"
@@ -212,13 +209,7 @@ else
 
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome_${ADG_TAG#v}_all.ipk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
-    # 从下载的 IPK control 文件中提取精确版本号
-    ADG_IPK_FILE=$(ls luci-app-adguardhome_*.ipk 2>/dev/null | head -1)
-    ADG_PKG_VER=$(ar -p "$ADG_IPK_FILE" control.tar.gz 2>/dev/null | tar -xzf - -O ./control 2>/dev/null | grep '^Version:' | awk -F': ' '{print $2}')
 fi
-# 版本号提取兜底
-[ -z "$ADG_PKG_VER" ] && ADG_PKG_VER="${ADG_TAG#v}"
-$BATCH && log_info_batch "AdGuardHome 包版本: ${ADG_PKG_VER}" || log_info "AdGuardHome 包版本: ${ADG_PKG_VER}"
 
 $BATCH && log_info_batch "第三方包下载完成 (${PKG_FORMAT})" || log_info "第三方包下载完成 (${PKG_FORMAT})"
 
@@ -292,7 +283,7 @@ $BATCH && log_info_batch "FILES 目录准备完成" || log_info "FILES 目录准
 # --- 步骤 7: 构建固件 ---
 $BATCH && log_step_batch "7/9 构建固件..." || log_step "7/9 构建固件..."
 cd "$IMAGEBUILDER_DIR"
-PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome=${ADG_PKG_VER} luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
+PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
 # 不再设置ROOTFS_PARTSIZE
