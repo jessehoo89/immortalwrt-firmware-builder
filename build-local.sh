@@ -196,8 +196,12 @@ if [ "$PKG_FORMAT" = "apk" ]; then
     wget -q "${GHPREFIX}https://github.com/${LUCKY_REPO}/releases/download/${LUCKY_TAG}/SNAPSHOT-x86_64.tar.gz"
     tar -xzf SNAPSHOT-x86_64.tar.gz --strip-components=1 -C . && rm -f SNAPSHOT-x86_64.tar.gz
 
-    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk"
-    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk"
+    # stevenjoezhang AdGuardHome APK → 放在 FILES/root/，开机后本地安装（绕过 APK 版本竞争）
+    mkdir -p "${IMAGEBUILDER_DIR}/FILES/root"
+    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk" \
+        -O "${IMAGEBUILDER_DIR}/FILES/root/luci-app-adguardhome.apk"
+    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk" \
+        -O "${IMAGEBUILDER_DIR}/FILES/root/luci-i18n-adguardhome-zh-cn.apk"
 else
     # === 24.x- (IPK 格式) ===
     wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-22.03.7.zip"
@@ -210,20 +214,8 @@ else
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome_${ADG_TAG#v}_all.ipk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
 fi
-# 创建假的 adguardhome 包，拦截 luci-app-adguardhome 对官方 adguardhome 的依赖
-# 官方 adguardhome 把 /usr/bin/AdGuardHome 装为文件，与 FILES 目录结构冲突
-mkdir -p /tmp/adg_dummy
-cat > /tmp/adg_dummy/.PKGINFO << 'PKGEOF'
-pkgname = adguardhome
-pkgver = 999.0.0-r99
-arch = all
-description = Dummy package (binary provided via FILES)
-PKGEOF
-mkdir -p /tmp/adg_dummy/usr/share/adguardhome
-touch /tmp/adg_dummy/usr/share/adguardhome/.placeholder
-(cd /tmp/adg_dummy && tar -czf "${IMAGEBUILDER_DIR}/packages/adguardhome-999.0.0-r99.apk" .PKGINFO usr/)
-rm -rf /tmp/adg_dummy
 
+# --- 步骤 5 完成 ---
 $BATCH && log_info_batch "第三方包下载完成 (${PKG_FORMAT})" || log_info "第三方包下载完成 (${PKG_FORMAT})"
 
 # --- 步骤 6: 准备 FILES 目录 ---
@@ -291,12 +283,26 @@ cat > FILES/etc/uci-defaults/99-lucky-cron << 'CRONEOF'
 CRONEOF
 chmod +x FILES/etc/uci-defaults/99-lucky-cron
 
+# stevenjoezhang AdGuardHome APK 开机安装
+cat > FILES/etc/uci-defaults/98-adguardhome-apk << 'APKEOF'
+#!/bin/sh
+# 开机后安装 stevenjoezhang 版 luci-app-adguardhome
+# （不经过 ImageBuilder 构建时依赖解析，直接用本地 APK 文件）
+APK_DIR=/root
+for f in "$APK_DIR"/luci-app-adguardhome.apk "$APK_DIR"/luci-i18n-adguardhome-zh-cn.apk; do
+    [ -f "$f" ] && apk add --allow-untrusted "$f" 2>/dev/null
+done
+# 安装后清理
+rm -f "$APK_DIR"/*.apk
+APKEOF
+chmod +x FILES/etc/uci-defaults/98-adguardhome-apk
+
 $BATCH && log_info_batch "FILES 目录准备完成" || log_info "FILES 目录准备完成"
 
 # --- 步骤 7: 构建固件 ---
 $BATCH && log_step_batch "7/9 构建固件..." || log_step "7/9 构建固件..."
 cd "$IMAGEBUILDER_DIR"
-PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
+PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
 # 不再设置ROOTFS_PARTSIZE
