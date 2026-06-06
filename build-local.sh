@@ -210,6 +210,19 @@ else
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome_${ADG_TAG#v}_all.ipk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
 fi
+# 创建假的 adguardhome 包，拦截 luci-app-adguardhome 对官方 adguardhome 的依赖
+# 官方 adguardhome 把 /usr/bin/AdGuardHome 装为文件，与 FILES 目录结构冲突
+mkdir -p /tmp/adg_dummy
+cat > /tmp/adg_dummy/.PKGINFO << 'PKGEOF'
+pkgname = adguardhome
+pkgver = 999.0.0-r99
+arch = all
+description = Dummy package (binary provided via FILES)
+PKGEOF
+mkdir -p /tmp/adg_dummy/usr/share/adguardhome
+touch /tmp/adg_dummy/usr/share/adguardhome/.placeholder
+(cd /tmp/adg_dummy && tar -czf "${IMAGEBUILDER_DIR}/packages/adguardhome-999.0.0-r99.apk" .PKGINFO usr/)
+rm -rf /tmp/adg_dummy
 
 $BATCH && log_info_batch "第三方包下载完成 (${PKG_FORMAT})" || log_info "第三方包下载完成 (${PKG_FORMAT})"
 
@@ -283,7 +296,7 @@ $BATCH && log_info_batch "FILES 目录准备完成" || log_info "FILES 目录准
 # --- 步骤 7: 构建固件 ---
 $BATCH && log_step_batch "7/9 构建固件..." || log_step "7/9 构建固件..."
 cd "$IMAGEBUILDER_DIR"
-PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky -adguardhome luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
+PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
 # 不再设置ROOTFS_PARTSIZE
