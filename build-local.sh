@@ -198,6 +198,9 @@ if [ "$PKG_FORMAT" = "apk" ]; then
 
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk"
+    # 从下载的 APK 中提取精确版本号（.PKGINFO 是 APK 标准元数据）
+    ADG_APK_FILE=$(ls luci-app-adguardhome-*.apk 2>/dev/null | head -1)
+    ADG_PKG_VER=$(tar -xzf "$ADG_APK_FILE" -O .PKGINFO 2>/dev/null | grep '^pkgver' | awk '{print $3}')
 else
     # === 24.x- (IPK 格式) ===
     wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-22.03.7.zip"
@@ -209,22 +212,21 @@ else
 
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome_${ADG_TAG#v}_all.ipk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
+    # 从下载的 IPK control 文件中提取精确版本号
+    ADG_IPK_FILE=$(ls luci-app-adguardhome_*.ipk 2>/dev/null | head -1)
+    ADG_PKG_VER=$(ar -p "$ADG_IPK_FILE" control.tar.gz 2>/dev/null | tar -xzf - -O ./control 2>/dev/null | grep '^Version:' | awk -F': ' '{print $2}')
 fi
+# 版本号提取兜底
+[ -z "$ADG_PKG_VER" ] && ADG_PKG_VER="${ADG_TAG#v}"
+$BATCH && log_info_batch "AdGuardHome 包版本: ${ADG_PKG_VER}" || log_info "AdGuardHome 包版本: ${ADG_PKG_VER}"
 
 $BATCH && log_info_batch "第三方包下载完成 (${PKG_FORMAT})" || log_info "第三方包下载完成 (${PKG_FORMAT})"
 
 # --- 步骤 6: 准备 FILES 目录 ---
 $BATCH && log_step_batch "6/9 准备 FILES 目录..." || log_step "6/9 准备 FILES 目录..."
 cd "$IMAGEBUILDER_DIR"
-if [ "$PKG_FORMAT" = "apk" ]; then
-    # APK 模式下 AdGuardHome 包已安装 /usr/bin/AdGuardHome（文件），
-    # 用目录结构会冲突，直接将二进制放为文件
-    ADG_BIN_PATH="FILES/usr/bin"
-    mkdir -p "$ADG_BIN_PATH" FILES/etc/openclash/core FILES/etc/opkg
-else
-    ADG_BIN_PATH="FILES/usr/bin/AdGuardHome"
-    mkdir -p "$ADG_BIN_PATH" FILES/etc/openclash/core FILES/etc/opkg
-fi
+mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg
+ADG_BIN_PATH="FILES/usr/bin/AdGuardHome"
 
 cat > FILES/etc/opkg/distfeeds.conf << EOF
 src/gz immortalwrt_core $MIRROR/releases/${VERSION}/targets/x86/64/packages
@@ -276,12 +278,21 @@ else
     exit 1
 fi
 
+# --- Lucky cron 保活 ---
+mkdir -p FILES/etc/uci-defaults
+cat > FILES/etc/uci-defaults/99-lucky-cron << 'CRONEOF'
+#!/bin/sh
+# Lucky 进程保活：每分钟检测，崩溃自动重启
+(crontab -l 2>/dev/null; echo '*/1 * * * * test -z "$(pidof lucky)" && lucky >/dev/null 2>&1') | crontab -
+CRONEOF
+chmod +x FILES/etc/uci-defaults/99-lucky-cron
+
 $BATCH && log_info_batch "FILES 目录准备完成" || log_info "FILES 目录准备完成"
 
 # --- 步骤 7: 构建固件 ---
 $BATCH && log_step_batch "7/9 构建固件..." || log_step "7/9 构建固件..."
 cd "$IMAGEBUILDER_DIR"
-PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
+PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome=${ADG_PKG_VER} luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn luci-i18n-adguardhome-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
 # 不再设置ROOTFS_PARTSIZE
