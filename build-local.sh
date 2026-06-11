@@ -274,14 +274,15 @@ else
     exit 1
 fi
 
-# --- Lucky cron 保活 ---
-mkdir -p FILES/etc/uci-defaults
-cat > FILES/etc/uci-defaults/99-lucky-cron << 'CRONEOF'
-#!/bin/sh
-# Lucky 进程保活：每分钟检测，崩溃自动重启
-(crontab -l 2>/dev/null; echo '*/1 * * * * test -z "$(pidof lucky)" && lucky >/dev/null 2>&1') | crontab -
-CRONEOF
-chmod +x FILES/etc/uci-defaults/99-lucky-cron
+# --- Lucky UCI 配置 ---
+# Lucky 服务依赖 /etc/config/lucky 配置文件才能正常开机自启
+# 缺失该文件会导致 lucky 无法通过 procd/init 自动启动
+mkdir -p FILES/etc/config
+cat > FILES/etc/config/lucky << 'UCIEOF'
+config lucky 'lucky'
+	option enabled '1'
+	option port '16601'
+UCIEOF
 
 # stevenjoezhang AdGuardHome APK 开机安装
 cat > FILES/etc/uci-defaults/98-adguardhome-apk << 'APKEOF'
