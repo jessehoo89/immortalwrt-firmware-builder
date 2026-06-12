@@ -285,6 +285,7 @@ config lucky 'lucky'
 UCIEOF
 
 # stevenjoezhang AdGuardHome APK 开机安装
+mkdir -p FILES/etc/uci-defaults
 cat > FILES/etc/uci-defaults/98-adguardhome-apk << 'APKEOF'
 #!/bin/sh
 # 开机后安装 stevenjoezhang 版 luci-app-adguardhome
