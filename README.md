@@ -116,7 +116,7 @@ sh /etc/uci-defaults/70-rootpt-resize
 
 ### 修改预装软件包
 
-编辑 `.github/workflows/build.yml`，找到 **构建固件** 步骤中的 `PACKAGES` 变量：
+编辑 `config.sh`，找到 **构建固件** 步骤中的 `PACKAGES` 变量：
 
 ```yaml
 PACKAGES="kmod-tun easytier miniupnpd-nftables lucky luci-app-adguardhome ..."
@@ -191,4 +191,4 @@ chmod +x build-local.sh
 
 ---
 
-**文档版本**: 1.0.0
+**文档版本**: 1.1.0
