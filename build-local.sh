@@ -236,8 +236,8 @@ $BATCH && log_info_batch "第三方包下载完成 (${PKG_FORMAT})" || log_info 
 # --- 步骤 6: 准备 FILES 目录 ---
 $BATCH && log_step_batch "6/9 准备 FILES 目录..." || log_step "6/9 准备 FILES 目录..."
 cd "$IMAGEBUILDER_DIR"
-mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg
-ADG_BIN_PATH="FILES/usr/bin/AdGuardHome"
+mkdir -p FILES/usr/bin FILES/etc/openclash/core FILES/etc/opkg
+ADG_BIN_PATH="FILES/usr/bin"
 
 cat > FILES/etc/opkg/distfeeds.conf << EOF
 src/gz immortalwrt_core $MIRROR/releases/${VERSION}/targets/x86/64/packages
