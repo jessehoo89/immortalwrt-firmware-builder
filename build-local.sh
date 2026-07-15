@@ -185,11 +185,11 @@ $BATCH && log_info_batch "ImageBuilder 目录: ${IMAGEBUILDER_DIR}" || log_info 
 $BATCH && log_step_batch "4/9 配置软件源..." || log_step "4/9 配置软件源..."
 cd "$IMAGEBUILDER_DIR"
 cat > repositories.conf << EOF
+src imagebuilder file:packages
 src/gz immortalwrt_core $MIRROR/releases/${VERSION}/targets/x86/64/packages
 src/gz immortalwrt_base $MIRROR/releases/${VERSION}/packages/x86_64/base
 src/gz immortalwrt_kmods $MIRROR/releases/${VERSION}/targets/x86/64/kmods/${KMODS_SUBDIR}
 src/gz immortalwrt_luci $MIRROR/releases/${VERSION}/packages/x86_64/luci
-src imagebuilder file:packages
 src/gz immortalwrt_packages $MIRROR/releases/${VERSION}/packages/x86_64/packages
 src/gz immortalwrt_routing $MIRROR/releases/${VERSION}/packages/x86_64/routing
 src/gz immortalwrt_telephony $MIRROR/releases/${VERSION}/packages/x86_64/telephony
@@ -207,13 +207,9 @@ if [ "$PKG_FORMAT" = "apk" ]; then
     wget -q "${GHPREFIX}https://github.com/${LUCKY_REPO}/releases/download/${LUCKY_TAG}/SNAPSHOT-x86_64.tar.gz"
     tar -xzf SNAPSHOT-x86_64.tar.gz --strip-components=1 -C . && rm -f SNAPSHOT-x86_64.tar.gz
 
-    # stevenjoezhang AdGuardHome APK → 放在 FILES/root/，开机后本地安装（绕过 APK 版本竞争）
-    mkdir -p "${IMAGEBUILDER_DIR}/FILES/root"
-    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk" \
-        -O "${IMAGEBUILDER_DIR}/FILES/root/luci-app-adguardhome.apk"
-    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk" \
-        -O "${IMAGEBUILDER_DIR}/FILES/root/luci-i18n-adguardhome-zh-cn.apk"
-
+    # stevenjoezhang AdGuardHome APK -> 放入 packages 目录，通过 PACKAGES 列表构建进固件
+    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk"
+    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk"
     # mosdns (sbwml 版) - 预编译包含 mosdns/luci-app-mosdns/luci-i18n-mosdns-zh-cn/v2dat/v2ray-geosite/v2ray-geoip
     wget -q "${GHPREFIX}https://github.com/sbwml/luci-app-mosdns/releases/download/${MOSDNS_TAG}/x86_64-openwrt-${MOSDNS_SDK_VERSION}.tar.gz" -O mosdns.tar.gz
     tar -xzf mosdns.tar.gz --strip-components=1 -C . && rm -f mosdns.tar.gz
@@ -302,21 +298,6 @@ config lucky 'lucky'
 	option enabled '1'
 	option port '16601'
 UCIEOF
-
-# stevenjoezhang AdGuardHome APK 开机安装
-mkdir -p FILES/etc/uci-defaults
-cat > FILES/etc/uci-defaults/98-adguardhome-apk << 'APKEOF'
-#!/bin/sh
-# 开机后安装 stevenjoezhang 版 luci-app-adguardhome
-# （不经过 ImageBuilder 构建时依赖解析，直接用本地 APK 文件）
-APK_DIR=/root
-for f in "$APK_DIR"/luci-app-adguardhome.apk "$APK_DIR"/luci-i18n-adguardhome-zh-cn.apk; do
-    [ -f "$f" ] && apk add --allow-untrusted "$f" 2>/dev/null
-done
-# 安装后清理
-rm -f "$APK_DIR"/*.apk
-APKEOF
-chmod +x FILES/etc/uci-defaults/98-adguardhome-apk
 
 # --- 扩容脚本 (expand_root) ---
 # 按 OpenWrt Wiki 实现: https://openwrt.org/docs/guide-user/advanced/expand_root
@@ -437,7 +418,7 @@ $BATCH && log_info_batch "FILES 目录准备完成" || log_info "FILES 目录准
 # --- 步骤 7: 构建固件 ---
 $BATCH && log_step_batch "7/9 构建固件..." || log_step "7/9 构建固件..."
 cd "$IMAGEBUILDER_DIR"
-PACKAGES="partx-utils resize2fs parted e2fsprogs losetup blkid kmod-tun easytier miniupnpd-nftables lucky luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-app-mosdns luci-i18n-mosdns-zh-cn mosdns v2dat v2ray-geosite v2ray-geoip luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn"
+PACKAGES="partx-utils resize2fs parted e2fsprogs losetup blkid kmod-tun easytier miniupnpd-nftables lucky luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-app-adguardhome luci-i18n-adguardhome-zh-cn luci-app-mosdns luci-i18n-mosdns-zh-cn mosdns v2dat v2ray-geosite v2ray-geoip luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
 # 不再设置ROOTFS_PARTSIZE
