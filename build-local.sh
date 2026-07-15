@@ -134,6 +134,7 @@ LUCKY_TAG=$(get_latest_tag "$LUCKY_REPO")
 ADG_TAG=$(get_latest_tag "stevenjoezhang/luci-app-adguardhome")
 ADG_CORE_TAG=$(get_latest_tag "AdguardTeam/AdGuardHome")
 MIHOMO_TAG=$(get_latest_tag "MetaCubeX/mihomo")
+MOSDNS_TAG=$(get_latest_tag "sbwml/luci-app-mosdns")
 
 EASYTIER_TAG="${EASYTIER_TAG:-v2.5.0}"
 if [ "$PKG_FORMAT" = "apk" ]; then
@@ -144,6 +145,14 @@ fi
 ADG_TAG="${ADG_TAG:-v1.19}"
 ADG_CORE_TAG="${ADG_CORE_TAG:-v0.107.55}"
 MIHOMO_TAG="${MIHOMO_TAG:-v1.19.0}"
+MOSDNS_TAG="${MOSDNS_TAG:-v5.3.4-r5}"
+
+# Determine mosdns SDK version based on package format
+if [ "$PKG_FORMAT" = "apk" ]; then
+    MOSDNS_SDK_VERSION="25.12"
+else
+    MOSDNS_SDK_VERSION="24.10"
+fi
 
 if $BATCH; then
     log_info_batch "EasyTier: ${EASYTIER_TAG}"
@@ -151,12 +160,14 @@ if $BATCH; then
     log_info_batch "AdGuardHome LuCI: ${ADG_TAG}"
     log_info_batch "AdGuardHome Core: ${ADG_CORE_TAG}"
     log_info_batch "Mihomo: ${MIHOMO_TAG}"
+    log_info_batch "MosDNS: ${MOSDNS_TAG} (SDK: ${MOSDNS_SDK_VERSION})"
 else
     log_info "EasyTier: ${EASYTIER_TAG}"
     log_info "Lucky: ${LUCKY_TAG}"
     log_info "AdGuardHome LuCI: ${ADG_TAG}"
     log_info "AdGuardHome Core: ${ADG_CORE_TAG}"
     log_info "Mihomo: ${MIHOMO_TAG}"
+    log_info "MosDNS: ${MOSDNS_TAG} (SDK: ${MOSDNS_SDK_VERSION})"
 fi
 
 # --- 步骤 3: 下载 ImageBuilder ---
@@ -202,6 +213,10 @@ if [ "$PKG_FORMAT" = "apk" ]; then
         -O "${IMAGEBUILDER_DIR}/FILES/root/luci-app-adguardhome.apk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk" \
         -O "${IMAGEBUILDER_DIR}/FILES/root/luci-i18n-adguardhome-zh-cn.apk"
+
+    # mosdns (sbwml 版) - 预编译包含 mosdns/luci-app-mosdns/luci-i18n-mosdns-zh-cn/v2dat/v2ray-geosite/v2ray-geoip
+    wget -q "${GHPREFIX}https://github.com/sbwml/luci-app-mosdns/releases/download/${MOSDNS_TAG}/x86_64-openwrt-${MOSDNS_SDK_VERSION}.tar.gz" -O mosdns.tar.gz
+    tar -xzf mosdns.tar.gz --strip-components=1 -C . && rm -f mosdns.tar.gz
 else
     # === 24.x- (IPK 格式) ===
     wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-22.03.7.zip"
@@ -213,6 +228,10 @@ else
 
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome_${ADG_TAG#v}_all.ipk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn_260130.50632_all.ipk"
+
+    # mosdns (sbwml 版) - 预编译包含 mosdns/luci-app-mosdns/luci-i18n-mosdns-zh-cn/v2dat/v2ray-geosite/v2ray-geoip
+    wget -q "${GHPREFIX}https://github.com/sbwml/luci-app-mosdns/releases/download/${MOSDNS_TAG}/x86_64-openwrt-${MOSDNS_SDK_VERSION}.tar.gz" -O mosdns.tar.gz
+    tar -xzf mosdns.tar.gz --strip-components=1 -C . && rm -f mosdns.tar.gz
 fi
 
 # --- 步骤 5 完成 ---
@@ -299,12 +318,126 @@ rm -f "$APK_DIR"/*.apk
 APKEOF
 chmod +x FILES/etc/uci-defaults/98-adguardhome-apk
 
+# --- 扩容脚本 (expand_root) ---
+# 按 OpenWrt Wiki 实现: https://openwrt.org/docs/guide-user/advanced/expand_root
+# Pre 25.12 (ipk) 使用 opkg 安装缺失工具，Post 25.12 (apk) 使用 apk 安装
+mkdir -p FILES/etc/uci-defaults
+
+if [ "$PKG_FORMAT" = "apk" ]; then
+    # === Post 25.12 (apk) ===
+    cat > FILES/etc/uci-defaults/70-rootpt-resize << 'EXPANDEOF'
+#!/bin/sh
+# Expand root partition (Post 25.12 - apk)
+# Ref: https://openwrt.org/docs/guide-user/advanced/expand_root
+# Ensure required tools are available
+type parted > /dev/null 2>&1 || { apk update && apk add parted losetup resize2fs blkid; }
+
+if [ ! -e /etc/rootpt-resize ] \
+&& type parted > /dev/null \
+&& lock -n /var/lock/root-resize
+then
+ROOT_BLK="$(readlink -f /sys/dev/block/"$(awk -e \
+'$9=="/dev/root"{print $3}' /proc/self/mountinfo)")"
+ROOT_DISK="/dev/$(basename "${ROOT_BLK%/*}")"
+ROOT_PART="${ROOT_BLK##*[^0-9]}"
+parted -f -s "${ROOT_DISK}" \
+resizepart "${ROOT_PART}" 100%
+mount_root done
+touch /etc/rootpt-resize
+
+if [ -e /boot/cmdline.txt ]
+then
+NEW_UUID=`blkid ${ROOT_DISK}p${ROOT_PART} | sed -n 's/.*PARTUUID="\([^"]*\)".*/\1/p'`
+sed -i "s/PARTUUID=[^ ]*/PARTUUID=${NEW_UUID}/" /boot/cmdline.txt
+fi
+
+reboot
+fi
+exit 1
+EXPANDEOF
+else
+    # === Pre 25.12 (ipk) ===
+    cat > FILES/etc/uci-defaults/70-rootpt-resize << 'EXPANDEOF'
+#!/bin/sh
+# Expand root partition (Pre 25.12 - opkg)
+# Ref: https://openwrt.org/docs/guide-user/advanced/expand_root
+# Ensure required tools are available
+type parted > /dev/null 2>&1 || { opkg update && opkg install parted losetup resize2fs blkid; }
+
+if [ ! -e /etc/rootpt-resize ] \
+&& type parted > /dev/null \
+&& lock -n /var/lock/root-resize
+then
+ROOT_BLK="$(readlink -f /sys/dev/block/"$(awk -e \
+'$9=="/dev/root"{print $3}' /proc/self/mountinfo)")"
+ROOT_DISK="/dev/$(basename "${ROOT_BLK%/*}")"
+ROOT_PART="${ROOT_BLK##*[^0-9]}"
+parted -f -s "${ROOT_DISK}" \
+resizepart "${ROOT_PART}" 100%
+mount_root done
+touch /etc/rootpt-resize
+
+if [ -e /boot/cmdline.txt ]
+then
+NEW_UUID=`blkid ${ROOT_DISK}p${ROOT_PART} | sed -n 's/.*PARTUUID="\([^"]*\)".*/\1/p'`
+sed -i "s/PARTUUID=[^ ]*/PARTUUID=${NEW_UUID}/" /boot/cmdline.txt
+fi
+
+reboot
+fi
+exit 1
+EXPANDEOF
+fi
+chmod +x FILES/etc/uci-defaults/70-rootpt-resize
+
+# 80-rootfs-resize (两个版本共用同一脚本，不涉及包管理器)
+cat > FILES/etc/uci-defaults/80-rootfs-resize << 'EXPANDEOF'
+#!/bin/sh
+# Expand root filesystem
+# Ref: https://openwrt.org/docs/guide-user/advanced/expand_root
+if [ ! -e /etc/rootfs-resize ] \
+&& [ -e /etc/rootpt-resize ] \
+&& type losetup > /dev/null \
+&& type resize2fs > /dev/null \
+&& lock -n /var/lock/root-resize
+then
+ROOT_BLK="$(readlink -f /sys/dev/block/"$(awk -e \
+'$9=="/dev/root"{print $3}' /proc/self/mountinfo)")"
+ROOT_DEV="/dev/${ROOT_BLK##*/}"
+LOOP_DEV="$(awk -e '$5=="/overlay"{print $9}' \
+/proc/self/mountinfo)"
+if [ -z "${LOOP_DEV}" ]
+then
+LOOP_DEV="$(losetup -f)"
+losetup "${LOOP_DEV}" "${ROOT_DEV}"
+fi
+resize2fs -f "${LOOP_DEV}"
+mount_root done
+touch /etc/rootfs-resize
+reboot
+fi
+exit 1
+EXPANDEOF
+chmod +x FILES/etc/uci-defaults/80-rootfs-resize
+
+# 添加到 sysupgrade.conf 确保升级后保留
+cat >> FILES/etc/sysupgrade.conf << 'SYSEOF'
+/etc/uci-defaults/70-rootpt-resize
+/etc/uci-defaults/80-rootfs-resize
+SYSEOF
+
+if $BATCH; then
+    log_info_batch "扩容脚本已生成 (${PKG_FORMAT})"
+else
+    log_info "扩容脚本已生成 (${PKG_FORMAT})"
+fi
+
 $BATCH && log_info_batch "FILES 目录准备完成" || log_info "FILES 目录准备完成"
 
 # --- 步骤 7: 构建固件 ---
 $BATCH && log_step_batch "7/9 构建固件..." || log_step "7/9 构建固件..."
 cd "$IMAGEBUILDER_DIR"
-PACKAGES="partx-utils resize2fs parted e2fsprogs losetup kmod-tun easytier miniupnpd-nftables lucky luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn"
+PACKAGES="partx-utils resize2fs parted e2fsprogs losetup blkid kmod-tun easytier miniupnpd-nftables lucky luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-app-mosdns luci-i18n-mosdns-zh-cn mosdns v2dat v2ray-geosite v2ray-geoip luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn"
 rm -rf output bin/targets && mkdir -p output
 
 # 不再设置ROOTFS_PARTSIZE
@@ -351,6 +484,9 @@ Third-party Versions:
 - AdGuardHome LuCI: ${ADG_TAG}
 - AdGuardHome Core: ${ADG_CORE_TAG}
 - Mihomo: ${MIHOMO_TAG}
+- MosDNS: ${MOSDNS_TAG} (SDK: ${MOSDNS_SDK_VERSION})
+
+Expand Root: enabled (${PKG_FORMAT})
 
 Docker Image:
 - Repository: ${DOCKER_REPO:-}
@@ -374,6 +510,7 @@ LUCKY_TAG=${LUCKY_TAG}
 ADG_TAG=${ADG_TAG}
 ADG_CORE_TAG=${ADG_CORE_TAG}
 MIHOMO_TAG=${MIHOMO_TAG}
+MOSDNS_TAG=${MOSDNS_TAG}
 BUILD_TIME="${BUILD_TIME}"
 VAREOF
 fi
