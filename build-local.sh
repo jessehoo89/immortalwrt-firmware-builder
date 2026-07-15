@@ -210,6 +210,27 @@ if [ "$PKG_FORMAT" = "apk" ]; then
     # stevenjoezhang AdGuardHome APK -> 放入 packages 目录，通过 PACKAGES 列表构建进固件
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk"
     wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk"
+
+    # 创建假的 adguardhome 空包（版本号极高），阻止官方 adguardhome 包安装
+    # stevenjoezhang luci-app-adguardhome depends=adguardhome，官方 adguardhome 会在
+    # /usr/bin/AdGuardHome 安装文件，与 FILES 目录结构 /usr/bin/AdGuardHome/AdGuardHome 冲突
+    # 假包不安装任何文件，二进制通过 FILES 目录提供
+    mkdir -p /tmp/fake-adguardhome
+    cat > /tmp/fake-adguardhome/.PKGINFO << 'PKGEOF'
+pkgname = adguardhome
+pkgver = 99.9.99-r1
+pkgdesc = AdGuard Home core (placeholder - binary provided via FILES)
+url = https://github.com/AdguardTeam/AdGuardHome
+builddate = 1718000000
+packager = ImmortalWrt Builder
+size = 1
+arch = x86_64
+origin = adguardhome
+provides = adguardhome
+PKGEOF
+    cd /tmp/fake-adguardhome && tar -czf "${IMAGEBUILDER_DIR}/packages/adguardhome-99.9.99-r1.apk" .PKGINFO && cd "$IMAGEBUILDER_DIR/packages"
+    rm -rf /tmp/fake-adguardhome
+
     # mosdns (sbwml 版) - 预编译包含 mosdns/luci-app-mosdns/luci-i18n-mosdns-zh-cn/v2dat/v2ray-geosite/v2ray-geoip
     wget -q "${GHPREFIX}https://github.com/sbwml/luci-app-mosdns/releases/download/${MOSDNS_TAG}/x86_64-openwrt-${MOSDNS_SDK_VERSION}.tar.gz" -O mosdns.tar.gz
     tar -xzf mosdns.tar.gz --strip-components=1 -C . && rm -f mosdns.tar.gz
@@ -236,8 +257,8 @@ $BATCH && log_info_batch "第三方包下载完成 (${PKG_FORMAT})" || log_info 
 # --- 步骤 6: 准备 FILES 目录 ---
 $BATCH && log_step_batch "6/9 准备 FILES 目录..." || log_step "6/9 准备 FILES 目录..."
 cd "$IMAGEBUILDER_DIR"
-mkdir -p FILES/usr/bin FILES/etc/openclash/core FILES/etc/opkg
-ADG_BIN_PATH="FILES/usr/bin"
+mkdir -p FILES/usr/bin/AdGuardHome FILES/etc/openclash/core FILES/etc/opkg
+ADG_BIN_PATH="FILES/usr/bin/AdGuardHome"
 
 cat > FILES/etc/opkg/distfeeds.conf << EOF
 src/gz immortalwrt_core $MIRROR/releases/${VERSION}/targets/x86/64/packages
