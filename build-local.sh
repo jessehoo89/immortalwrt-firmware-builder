@@ -133,7 +133,6 @@ fi
 LUCKY_TAG=$(get_latest_tag "$LUCKY_REPO")
 ADG_TAG=$(get_latest_tag "stevenjoezhang/luci-app-adguardhome")
 ADG_CORE_TAG=$(get_latest_tag "AdguardTeam/AdGuardHome")
-MIHOMO_TAG=$(get_latest_tag "MetaCubeX/mihomo")
 MOSDNS_TAG=$(get_latest_tag "sbwml/luci-app-mosdns")
 
 EASYTIER_TAG="${EASYTIER_TAG:-v2.5.0}"
@@ -144,8 +143,10 @@ else
 fi
 ADG_TAG="${ADG_TAG:-v1.19}"
 ADG_CORE_TAG="${ADG_CORE_TAG:-v0.107.55}"
-MIHOMO_TAG="${MIHOMO_TAG:-v1.19.0}"
 MOSDNS_TAG="${MOSDNS_TAG:-v5.3.4-r5}"
+
+# OpenClash core type (smart/meta, default: smart)
+CORE_TYPE="${CORE_TYPE:-smart}"
 
 # Determine mosdns SDK version based on package format
 if [ "$PKG_FORMAT" = "apk" ]; then
@@ -159,14 +160,14 @@ if $BATCH; then
     log_info_batch "Lucky: ${LUCKY_TAG}"
     log_info_batch "AdGuardHome LuCI: ${ADG_TAG}"
     log_info_batch "AdGuardHome Core: ${ADG_CORE_TAG}"
-    log_info_batch "Mihomo: ${MIHOMO_TAG}"
+    log_info_batch "Clash Core: ${CORE_TYPE}"
     log_info_batch "MosDNS: ${MOSDNS_TAG} (SDK: ${MOSDNS_SDK_VERSION})"
 else
     log_info "EasyTier: ${EASYTIER_TAG}"
     log_info "Lucky: ${LUCKY_TAG}"
     log_info "AdGuardHome LuCI: ${ADG_TAG}"
     log_info "AdGuardHome Core: ${ADG_CORE_TAG}"
-    log_info "Mihomo: ${MIHOMO_TAG}"
+    log_info "Clash Core: ${CORE_TYPE}"
     log_info "MosDNS: ${MOSDNS_TAG} (SDK: ${MOSDNS_SDK_VERSION})"
 fi
 
@@ -260,20 +261,35 @@ else
     exit 1
 fi
 
-# 下载 mihomo 核心
-echo "下载 mihomo 核心 ${MIHOMO_TAG}..." >&2
-if wget -q "${GHPREFIX}https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_TAG}/mihomo-linux-amd64-${MIHOMO_TAG}.gz" -O mihomo-linux-amd64-${MIHOMO_TAG}.gz 2>&1; then
-    if [ -s "mihomo-linux-amd64-${MIHOMO_TAG}.gz" ]; then
-        gunzip -c mihomo-*.gz > FILES/etc/openclash/core/clash_meta
-        chmod +x FILES/etc/openclash/core/clash_meta
-        echo "✅ mihomo 核心下载成功" >&2
-        rm -f mihomo-*.gz
+# 下载 OpenClash 核心 (vernesong 仓库)
+# Smart: https://raw.githubusercontent.com/vernesong/OpenClash/core/master/smart/clash-linux-amd64-v1.tar.gz
+# Meta:  https://raw.githubusercontent.com/vernesong/OpenClash/core/master/meta/clash-linux-amd64-v1.tar.gz
+echo "下载 OpenClash ${CORE_TYPE} 核心..." >&2
+CLASH_CORE_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/master/${CORE_TYPE}/clash-linux-amd64-v1.tar.gz"
+if wget -q "${GHPREFIX}${CLASH_CORE_URL}" -O clash-core.tar.gz 2>&1; then
+    if [ -s "clash-core.tar.gz" ]; then
+        tar -xzf clash-core.tar.gz -C /tmp/clash-core-extract 2>/dev/null || { mkdir -p /tmp/clash-core-extract && tar -xzf clash-core.tar.gz -C /tmp/clash-core-extract; }
+        CLASH_BIN=$(find /tmp/clash-core-extract -type f -name "clash*" | head -1)
+        if [ -n "$CLASH_BIN" ]; then
+            if [ "$CORE_TYPE" = "meta" ]; then
+                cp "$CLASH_BIN" FILES/etc/openclash/core/clash_meta
+                chmod +x FILES/etc/openclash/core/clash_meta
+            else
+                cp "$CLASH_BIN" FILES/etc/openclash/core/clash
+                chmod +x FILES/etc/openclash/core/clash
+            fi
+            echo "✅ OpenClash ${CORE_TYPE} 核心下载成功" >&2
+        else
+            echo "❌ OpenClash 核心解压失败: 未找到 clash 二进制" >&2
+            exit 1
+        fi
+        rm -rf /tmp/clash-core-extract clash-core.tar.gz
     else
-        echo "❌ mihomo 核心下载失败: 文件为空" >&2
+        echo "❌ OpenClash 核心下载失败: 文件为空" >&2
         exit 1
     fi
 else
-    echo "❌ mihomo 核心下载失败: wget错误" >&2
+    echo "❌ OpenClash 核心下载失败: wget错误" >&2
     exit 1
 fi
 
@@ -292,18 +308,23 @@ mkdir -p FILES/etc/uci-defaults
 cat > FILES/etc/uci-defaults/98-adguardhome-apk << 'APKEOF'
 #!/bin/sh
 # 开机后安装 stevenjoezhang 版 luci-app-adguardhome
+# 两个 APK 一起安装（避免逐个安装时 apk 内部 wget 联网失败导致中断）
+LOG=/tmp/adguardhome-install.log
 APK_DIR=/root
-for f in "$APK_DIR"/luci-app-adguardhome.apk "$APK_DIR"/luci-i18n-adguardhome-zh-cn.apk; do
-    [ -f "$f" ] && apk add --allow-untrusted "$f" 2>/dev/null
-done
-# 修复 world 文件：移除 apk add 写入的哈希版本约束，改为无版本约束
-# 否则后续 apk add 任何包都会报 breaks: world 冲突
-sed -i '/luci-app-adguardhome/d' /etc/apk/world
-echo "luci-app-adguardhome" >> /etc/apk/world
-sed -i '/luci-i18n-adguardhome-zh-cn/d' /etc/apk/world
-echo "luci-i18n-adguardhome-zh-cn" >> /etc/apk/world
-# 安装后清理
-rm -f "$APK_DIR"/*.apk
+if [ -f "$APK_DIR/luci-app-adguardhome.apk" ] && [ -f "$APK_DIR/luci-i18n-adguardhome-zh-cn.apk" ]; then
+    apk add --allow-untrusted "$APK_DIR/luci-app-adguardhome.apk" "$APK_DIR/luci-i18n-adguardhome-zh-cn.apk" > "$LOG" 2>&1
+    if [ $? -eq 0 ]; then
+        # 安装成功：修复 world 文件（移除哈希版本约束，改为纯包名）
+        sed -i '/luci-app-adguardhome/d' /etc/apk/world
+        echo "luci-app-adguardhome" >> /etc/apk/world
+        sed -i '/luci-i18n-adguardhome-zh-cn/d' /etc/apk/world
+        echo "luci-i18n-adguardhome-zh-cn" >> /etc/apk/world
+        # 清理 APK 文件
+        rm -f "$APK_DIR"/*.apk
+    fi
+else
+    echo "APK files not found" > "$LOG"
+fi
 APKEOF
 chmod +x FILES/etc/uci-defaults/98-adguardhome-apk
 
@@ -472,7 +493,7 @@ Third-party Versions:
 - Lucky: ${LUCKY_TAG}
 - AdGuardHome LuCI: ${ADG_TAG}
 - AdGuardHome Core: ${ADG_CORE_TAG}
-- Mihomo: ${MIHOMO_TAG}
+- Clash Core: ${CORE_TYPE}
 - MosDNS: ${MOSDNS_TAG} (SDK: ${MOSDNS_SDK_VERSION})
 
 Expand Root: enabled (${PKG_FORMAT})
@@ -498,7 +519,7 @@ EASYTIER_TAG=${EASYTIER_TAG}
 LUCKY_TAG=${LUCKY_TAG}
 ADG_TAG=${ADG_TAG}
 ADG_CORE_TAG=${ADG_CORE_TAG}
-MIHOMO_TAG=${MIHOMO_TAG}
+CORE_TYPE=${CORE_TYPE}
 MOSDNS_TAG=${MOSDNS_TAG}
 BUILD_TIME="${BUILD_TIME}"
 VAREOF

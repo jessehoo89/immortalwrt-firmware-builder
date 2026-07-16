@@ -7,6 +7,14 @@ on:
         description: 'ImmortalWrt Version (leave empty for latest)'
         required: false
         default: ''
+      core_type:
+        description: 'OpenClash Core Type (smart/meta)'
+        required: false
+        default: 'smart'
+        type: choice
+        options:
+          - smart
+          - meta
   schedule:
     - cron: '0 2 * * 0'
 
@@ -49,6 +57,7 @@ jobs:
           WORK_DIR: "${{ github.workspace }}/immortalwrt"
           OUTPUT_DIR: "${{ github.workspace }}/firmware"
           IMMORTALWRT_VERSION: "${{ github.event.inputs.version }}"
+          CORE_TYPE: "${{ github.event.inputs.core_type }}"
       
       - name: Upload to Release
         uses: softprops/action-gh-release@v2

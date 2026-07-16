@@ -54,8 +54,8 @@ ADGUARDHOME_LUCI_TAG=""
 # AdGuardHome 核心
 ADGUARDHOME_CORE_TAG=""
 
-# Mihomo (Meta 内核)
-MIHOMO_TAG=""
+# OpenClash 核心 (vernesong 仓库, smart/meta)
+CORE_TYPE="smart"
 
 # MosDNS (sbwml/luci-app-mosdns - 非官方源)
 # 预编译包含: mosdns luci-app-mosdns luci-i18n-mosdns-zh-cn v2dat v2ray-geosite v2ray-geoip
