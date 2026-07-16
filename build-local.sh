@@ -275,8 +275,8 @@ if wget -q "${GHPREFIX}${CLASH_CORE_URL}" -O clash-core.tar.gz 2>&1; then
                 cp "$CLASH_BIN" FILES/etc/openclash/core/clash_meta
                 chmod +x FILES/etc/openclash/core/clash_meta
             else
-                cp "$CLASH_BIN" FILES/etc/openclash/core/clash
-                chmod +x FILES/etc/openclash/core/clash
+                cp "$CLASH_BIN" FILES/etc/openclash/core/clash_meta
+                chmod +x FILES/etc/openclash/core/clash_meta
             fi
             echo "✅ OpenClash ${CORE_TYPE} 核心下载成功" >&2
         else
