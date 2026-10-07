@@ -29,6 +29,36 @@ get_latest_tag() {
         | grep -E '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/'
 }
 
+# 获取指定 tag 的 release 中匹配 pattern 的资产名
+# 用途：上游 release 的资产文件名内嵌版本号（如 luci-i18n-adguardhome-zh-cn-0.260910.27721.apk），
+#       每次发版都会变，硬编码必然 404，改为按 release 实际资产动态解析
+get_asset_name() {
+    local repo=$1
+    local tag=$2
+    local pattern=$3
+    curl -s "https://api.github.com/repos/${repo}/releases/tags/${tag}" \
+        | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' \
+        | sed -E 's/.*"([^"]+)".*/\1/' \
+        | grep -E "${pattern}" | head -1
+}
+
+# 统一失败出口（交互/静默模式都输出到日志可见处）
+fail() {
+    $BATCH && log_error_batch "$1" || log_error "$1"
+    exit 1
+}
+
+# 下载文件并在失败时报出完整 URL
+# 用途：`wget -q` 失败时既不打印错误、set -e 又直接退脚本，
+#        CI 日志里只剩一句 `Process completed with exit code 8`，极难排查
+fetch() {
+    local url=$1
+    local out=$2
+    if ! wget -q "$url" -O "$out"; then
+        fail "下载失败: ${url}"
+    fi
+}
+
 get_latest_version() {
     local mirror=$1
     curl -s "${mirror}/releases/" \
@@ -176,7 +206,8 @@ $BATCH && log_step_batch "3/9 下载 ImageBuilder..." || log_step "3/9 下载 Im
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
 echo "Downloading ImageBuilder ${VERSION}..." >&2
-wget -q "$MIRROR/releases/${VERSION}/targets/x86/64/immortalwrt-imagebuilder-${VERSION}-x86-64.Linux-x86_64.tar.zst" -O imagebuilder.tar.zst
+fetch "$MIRROR/releases/${VERSION}/targets/x86/64/immortalwrt-imagebuilder-${VERSION}-x86-64.Linux-x86_64.tar.zst" \
+    imagebuilder.tar.zst
 tar -I zstd -xf imagebuilder.tar.zst
 rm -f imagebuilder.tar.zst
 IMAGEBUILDER_DIR=$(cd immortalwrt-imagebuilder-* && pwd)
@@ -202,20 +233,36 @@ cd "$IMAGEBUILDER_DIR/packages"
 
 if [ "$PKG_FORMAT" = "apk" ]; then
     # === 25.x+ (APK 格式) ===
-    wget -q "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-SNAPSHOT.zip"
+    fetch "${GHPREFIX}https://github.com/EasyTier/luci-app-easytier/releases/download/${EASYTIER_TAG}/EasyTier-${EASYTIER_TAG}-x86_64-SNAPSHOT.zip" \
+        "EasyTier-${EASYTIER_TAG}-x86_64-SNAPSHOT.zip"
     unzip -q EasyTier-*.zip && rm -f EasyTier-*.zip
 
-    wget -q "${GHPREFIX}https://github.com/${LUCKY_REPO}/releases/download/${LUCKY_TAG}/SNAPSHOT-x86_64.tar.gz"
+    fetch "${GHPREFIX}https://github.com/${LUCKY_REPO}/releases/download/${LUCKY_TAG}/SNAPSHOT-x86_64.tar.gz" \
+        SNAPSHOT-x86_64.tar.gz
     tar -xzf SNAPSHOT-x86_64.tar.gz --strip-components=1 -C . && rm -f SNAPSHOT-x86_64.tar.gz
 
     # stevenjoezhang AdGuardHome APK -> 放在 FILES/root/，开机后本地安装
+    # 资产名内嵌上游版本号（luci-app-adguardhome-1.21-r1.apk、
+    # luci-i18n-adguardhome-zh-cn-0.260910.27721.apk），上游每发一版都会变，
+    # 必须按 release 实际资产动态解析；此前 i18n 包版本号写死为 v1.19 时代的
+    # 0.260130.50632，导致 v1.20/v1.21 起 404（wget exit 8）而整体失败
+    ADG_REPO="stevenjoezhang/luci-app-adguardhome"
+    ADG_APK_NAME=$(get_asset_name "${ADG_REPO}" "${ADG_TAG}" '^luci-app-adguardhome-[0-9].*\.apk$')
+    ADG_I18N_NAME=$(get_asset_name "${ADG_REPO}" "${ADG_TAG}" '^luci-i18n-adguardhome-zh-cn-.*\.apk$')
+    if [ -z "${ADG_APK_NAME}" ] || [ -z "${ADG_I18N_NAME}" ]; then
+        fail "解析 ${ADG_REPO}@${ADG_TAG} 的 APK 资产名失败 (app='${ADG_APK_NAME}' i18n='${ADG_I18N_NAME}')"
+    fi
+    $BATCH && log_info_batch "AdGuardHome APK: ${ADG_APK_NAME} / ${ADG_I18N_NAME}" || log_info "AdGuardHome APK: ${ADG_APK_NAME} / ${ADG_I18N_NAME}"
     mkdir -p "${IMAGEBUILDER_DIR}/FILES/root"
-    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-app-adguardhome-${ADG_TAG#v}-r1.apk" \
-        -O "${IMAGEBUILDER_DIR}/FILES/root/luci-app-adguardhome.apk"
-    wget -q "${GHPREFIX}https://github.com/stevenjoezhang/luci-app-adguardhome/releases/download/${ADG_TAG}/luci-i18n-adguardhome-zh-cn-0.260130.50632.apk" \
-        -O "${IMAGEBUILDER_DIR}/FILES/root/luci-i18n-adguardhome-zh-cn.apk"
-    # mosdns (sbwml 版) - 预编译包含 mosdns/luci-app-mosdns/luci-i18n-mosdns-zh-cn/v2dat/v2ray-geosite/v2ray-geoip
-    wget -q "${GHPREFIX}https://github.com/sbwml/luci-app-mosdns/releases/download/${MOSDNS_TAG}/x86_64-openwrt-${MOSDNS_SDK_VERSION}.tar.gz" -O mosdns.tar.gz
+    fetch "${GHPREFIX}https://github.com/${ADG_REPO}/releases/download/${ADG_TAG}/${ADG_APK_NAME}" \
+        "${IMAGEBUILDER_DIR}/FILES/root/luci-app-adguardhome.apk"
+    fetch "${GHPREFIX}https://github.com/${ADG_REPO}/releases/download/${ADG_TAG}/${ADG_I18N_NAME}" \
+        "${IMAGEBUILDER_DIR}/FILES/root/luci-i18n-adguardhome-zh-cn.apk"
+
+    # mosdns (sbwml 版) - 预编译包含 mosdns/luci-app-mosdns/luci-i18n-mosdns-zh-cn/v2ray-geosite/v2ray-geoip
+    # 地理解析工具随上游改过名：v5.3.4-r9 及更早为 v2dat，r10 起改为 geo2txt（步骤 7 会按实际包动态选择）
+    fetch "${GHPREFIX}https://github.com/sbwml/luci-app-mosdns/releases/download/${MOSDNS_TAG}/x86_64-openwrt-${MOSDNS_SDK_VERSION}.tar.gz" \
+        mosdns.tar.gz
     tar -xzf mosdns.tar.gz --strip-components=1 -C . && rm -f mosdns.tar.gz
 fi
 
@@ -447,7 +494,24 @@ $BATCH && log_info_batch "FILES 目录准备完成" || log_info "FILES 目录准
 # --- 步骤 7: 构建固件 ---
 $BATCH && log_step_batch "7/9 构建固件..." || log_step "7/9 构建固件..."
 cd "$IMAGEBUILDER_DIR"
-PACKAGES="partx-utils resize2fs parted e2fsprogs losetup blkid kmod-tun easytier miniupnpd-nftables lucky luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-app-mosdns luci-i18n-mosdns-zh-cn mosdns v2dat v2ray-geosite v2ray-geoip luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn"
+PACKAGES="partx-utils resize2fs parted e2fsprogs losetup blkid kmod-tun easytier miniupnpd-nftables lucky luci-app-openclash luci-app-argon-config luci-app-autoreboot luci-app-msd_lite luci-app-wol luci-app-easytier luci-app-zerotier luci-app-diskman luci-app-lucky luci-app-mosdns luci-i18n-mosdns-zh-cn mosdns v2ray-geosite v2ray-geoip luci-i18n-zerotier-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-wol-zh-cn luci-i18n-msd_lite-zh-cn luci-i18n-upnp-zh-cn luci-i18n-diskman-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-firewall-zh-cn luci-app-upnp luci-i18n-package-manager-zh-cn luci-i18n-lucky-zh-cn"
+
+# mosdns 的地理解析工具随上游改过名：v5.3.4-r9 及更早是 v2dat，r10 起换成 geo2txt。
+# 写死 v2dat 会让 apk 报 "unable to select packages: v2dat (no such package)"，make image 直接失败。
+# 按实际下载到的包动态选择；都找不到时宁可不加，也不要塞一个空包名进 PACKAGES。
+MOSDNS_GEO_PKG=""
+if compgen -G "${IMAGEBUILDER_DIR}/packages/v2dat-*.apk" > /dev/null; then
+    MOSDNS_GEO_PKG="v2dat"
+elif compgen -G "${IMAGEBUILDER_DIR}/packages/geo2txt-*.apk" > /dev/null; then
+    MOSDNS_GEO_PKG="geo2txt"
+fi
+if [ -n "${MOSDNS_GEO_PKG}" ]; then
+    PACKAGES="${PACKAGES} ${MOSDNS_GEO_PKG}"
+    $BATCH && log_info_batch "mosdns 地理解析工具: ${MOSDNS_GEO_PKG}" || log_info "mosdns 地理解析工具: ${MOSDNS_GEO_PKG}"
+else
+    $BATCH && log_warn_batch "未找到 mosdns 地理解析工具包 (v2dat/geo2txt)，跳过" || log_warn "未找到 mosdns 地理解析工具包 (v2dat/geo2txt)，跳过"
+fi
+
 rm -rf output bin/targets && mkdir -p output
 
 # 不再设置ROOTFS_PARTSIZE
